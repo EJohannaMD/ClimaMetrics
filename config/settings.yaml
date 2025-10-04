@@ -1,0 +1,33 @@
+# ClimaMetrics Configuration Settings
+
+# Default paths
+paths:
+  data_dir: "data"
+  idf_dir: "data/idf"
+  weather_dir: "data/weather"
+  output_dir: "outputs/results"
+  log_dir: "outputs/logs"
+  temp_dir: null  # Will use system temp directory
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "outputs/logs/simulation.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# Simulation settings
+simulation:
+  max_parallel_jobs: null  # Will use CPU count - 1
+  timeout: 3600  # 1 hour timeout per simulation
+  retry_attempts: 3
+  retry_delay: 5  # seconds
+
+# Output settings
+output:
+  create_reports: true
+  report_format: "html"
+  include_summary: true
+  compress_results: false
+

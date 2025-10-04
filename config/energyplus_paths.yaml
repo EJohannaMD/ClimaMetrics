@@ -1,0 +1,31 @@
+# EnergyPlus Installation Paths
+
+# Platform-specific EnergyPlus executable paths
+# The application will automatically detect the correct path based on the operating system
+
+platforms:
+  windows:
+    - "C:\\EnergyPlusV25-1-0\\energyplus.exe"
+    - "C:\\EnergyPlusV23-1-0\\energyplus.exe"
+    - "C:\\EnergyPlusV9.4\\energyplus.exe"
+  
+  macos:
+    - "/Applications/EnergyPlus-9-4-0/energyplus"
+  
+  linux:
+    - "/usr/local/bin/energyplus"
+    - "/opt/energyplus/energyplus"
+    - "/usr/bin/energyplus"
+
+# Default version preference (will try these first)
+preferred_versions:
+  - "9-4-0"
+  - "25-1-0"
+  - "23-1-0"
+
+# Validation settings
+validation:
+  check_executable: true
+  check_version: true
+  min_version: "9.0.0"
+

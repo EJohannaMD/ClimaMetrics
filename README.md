@@ -27,12 +27,17 @@ git clone <repository-url>
 cd ClimaMetrics
 ```
 
-2. Install dependencies:
+2. Use venv in windows
+```bash
+.\.venv\Scripts\activate.ps1
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Install the package in development mode:
+4. Install the package in development mode:
 ```bash
 pip install -e .
 ```

@@ -308,14 +308,6 @@ class ThermalIndicators:
         )
 
         return df_alfa_data_frame
-    
-    def celsius_to_fahrenheit(self, celsius: float) -> float:
-        """Convert Celsius to Fahrenheit"""
-        return (celsius * 9/5) + 32
-
-    def fahrenheit_to_celsius(self, fahrenheit: float) -> float:
-        """Convert Fahrenheit to Celsius"""
-        return (fahrenheit - 32) * 5/9
 
     def calculate_heat_index_category(self, hi_celsius: float) -> str:
         """Categorize Heat Index risk levels"""
@@ -348,7 +340,7 @@ class ThermalIndicators:
 
         Where:
         - HI = Heat Index (°C) - V4 version uses Celsius directly
-        - T = Dry bulb temperature (°C)
+        - T = Dry bulb temperature (°C) ** change for Operative Temperature **
         - RH = Relative humidity (decimal, 0.0-1.0)
         - C1 to C9 = V4 regression coefficients
 
@@ -357,7 +349,7 @@ class ThermalIndicators:
         """
         data_frame_hi = pd.DataFrame()
         data_frame_hi['i'] = self._parse_datetime(data_frame['Date/Time'])
-        data_frame_hi['T_celsius'] = data_frame['Outdoor_Dry_Bulb_Temperature']
+        data_frame_hi['T_celsius'] = data_frame['Operative_Temperature']
         data_frame_hi['RH_percent'] = data_frame['Relative_Humidity']
         data_frame_hi['ZONE'] = data_frame['ZONE']
         data_frame_hi['ZONE_NAME'] = data_frame['ZONE_NAME']

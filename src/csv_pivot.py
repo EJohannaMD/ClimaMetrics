@@ -72,13 +72,67 @@ class CSVPivot:
         
         return True
     
-    def pivot_variable(self, csv_files: List[Path], variable: str) -> pd.DataFrame:
+    def _add_year_to_datetime(self, date_series: pd.Series, year: int) -> pd.Series:
+        """
+        Convert Date/Time from ' 01/01  01:00:00' format to '2020-01-01 01:00:00'.
+        Handles special case of 24:00:00 (midnight) by converting to 00:00:00 of next day.
+        
+        Args:
+            date_series: Series with dates in format ' MM/DD  HH:MM:SS'
+            year: Year to add to dates
+            
+        Returns:
+            Series with datetime objects formatted as ISO 8601 strings
+        """
+        try:
+            # Clean up the date string and add year
+            # Format: ' 01/01  01:00:00' -> '2020-01-01 01:00:00'
+            
+            def parse_date(date_str):
+                try:
+                    # Remove extra spaces and split
+                    cleaned = ' '.join(date_str.strip().split())
+                    
+                    # Handle 24:00:00 (midnight of next day) -> convert to 00:00:00 of next day
+                    if '24:00:00' in cleaned:
+                        # Split date and time
+                        date_part, time_part = cleaned.rsplit(' ', 1)
+                        # Parse the date
+                        month, day = date_part.split('/')
+                        # Convert to datetime for the current day
+                        dt = pd.to_datetime(f"{year}/{month}/{day} 00:00:00", format='%Y/%m/%d %H:%M:%S')
+                        # Add one day to get midnight of next day
+                        dt = dt + pd.Timedelta(days=1)
+                        # Return as ISO 8601 string
+                        return dt.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        # Normal parsing
+                        # Add year prefix: '01/01 01:00:00' -> '2020/01/01 01:00:00'
+                        with_year = f"{year}/{cleaned}"
+                        # Parse to datetime
+                        dt = pd.to_datetime(with_year, format='%Y/%m/%d %H:%M:%S')
+                        # Return as ISO 8601 string
+                        return dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception as e:
+                    # If parsing fails, return original string
+                    return date_str
+            
+            result = date_series.apply(parse_date)
+            self.logger.info(f"Successfully converted {len(result)} dates to year {year}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error adding year to dates: {e}")
+            return date_series
+    
+    def pivot_variable(self, csv_files: List[Path], variable: str, year: Optional[int] = None) -> pd.DataFrame:
         """
         Extract and consolidate a variable from multiple CSV files.
         
         Args:
             csv_files: List of CSV file paths
             variable: Variable name to extract
+            year: Optional year to add to Date/Time column
             
         Returns:
             Consolidated DataFrame
@@ -111,6 +165,11 @@ class CSVPivot:
         # Concatenate all data
         result_df = pd.concat(all_data, ignore_index=True)
         
+        # Add year to Date/Time if specified
+        if year:
+            self.logger.info(f"Adding year {year} to Date/Time column...")
+            result_df['Date/Time'] = self._add_year_to_datetime(result_df['Date/Time'], year)
+        
         # Sort by Date/Time and Zone for better readability
         result_df = result_df.sort_values(['Date/Time', 'Zone'])
         
@@ -122,7 +181,8 @@ class CSVPivot:
                      output_file: Path,
                      directory: Path = None,
                      pattern: str = None,
-                     variable: str = 'Operative_Temperature') -> None:
+                     variable: str = 'Operative_Temperature',
+                     year: Optional[int] = None) -> None:
         """
         Export pivoted data to CSV file.
         
@@ -131,6 +191,7 @@ class CSVPivot:
             directory: Directory with CSV files
             pattern: Glob pattern for file matching
             variable: Variable to extract
+            year: Optional year to add to Date/Time column
         """
         self.logger.info("Starting pivot operation...")
         
@@ -155,7 +216,9 @@ class CSVPivot:
         
         # Pivot the variable
         self.logger.info(f"Extracting variable: {variable}")
-        result_df = self.pivot_variable(csv_files, variable)
+        if year:
+            self.logger.info(f"Year will be added: {year}")
+        result_df = self.pivot_variable(csv_files, variable, year)
         
         if result_df.empty:
             self.logger.error("No data to export")

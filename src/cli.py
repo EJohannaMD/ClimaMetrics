@@ -585,15 +585,18 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
               help='Glob pattern for input files (e.g., "outputs/exports/*STUDYROOM*.csv")')
 @click.option('--variable', '-v', required=True,
               help='Variable to extract (e.g., "Operative_Temperature")')
+@click.option('--year', '-y', type=int,
+              help='Year to add to Date/Time column (e.g., 2020, 2025)')
 @click.option('--output', '-o', type=click.Path(path_type=Path),
               help='Output CSV file path (default: outputs/pivots/{variable}_All_Zones.csv)')
 @click.option('--summary', is_flag=True, help='Show detailed summary of processing')
-def pivot(directory, pattern, variable, output, summary):
+def pivot(directory, pattern, variable, year, output, summary):
     """
     Consolidate a variable from multiple zone exports into a single CSV.
     
     This command takes multiple exported CSV files (one per zone) and creates
     a consolidated CSV with a specific variable for all zones in LONG format.
+    Optionally, you can add a year to the Date/Time column for temporal analysis.
     
     Examples:
     
@@ -602,12 +605,16 @@ def pivot(directory, pattern, variable, output, summary):
     energyplus-sim pivot --variable "Operative_Temperature"
     
     \b
+    # Extract with year 2020 added to dates
+    energyplus-sim pivot --variable "Operative_Temperature" --year 2020
+    
+    \b
     # Extract from specific directory
     energyplus-sim pivot --dir "outputs/exports/" --variable "Air_Temperature"
     
     \b
-    # Extract from files matching pattern
-    energyplus-sim pivot --input "outputs/exports/*STUDYROOM*.csv" --variable "Relative_Humidity"
+    # Extract from files matching pattern with year
+    energyplus-sim pivot --input "outputs/exports/*STUDYROOM*.csv" --variable "Relative_Humidity" --year 2025
     
     \b
     # Custom output file
@@ -644,7 +651,8 @@ def pivot(directory, pattern, variable, output, summary):
             output_file=output,
             directory=directory,
             pattern=pattern,
-            variable=variable
+            variable=variable,
+            year=year
         )
         
         click.echo("\nPivot completed successfully!")

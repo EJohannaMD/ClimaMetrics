@@ -16,6 +16,7 @@ from .idf_analyzer import IDFAnalyzer
 from .csv_exporter import CSVExporter
 from .column_explorer import ColumnExplorer
 from .indicators import ThermalIndicators
+from .csv_pivot import CSVPivot
 
 
 @click.group()
@@ -573,6 +574,83 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
         
     except Exception as e:
         logger.error(f"Error calculating indicators: {e}")
+        click.echo(f"Error: {e}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option('--dir', 'directory', type=click.Path(exists=True, path_type=Path), 
+              help='Directory containing exported CSV files (default: outputs/exports/)')
+@click.option('--input', 'pattern', type=str,
+              help='Glob pattern for input files (e.g., "outputs/exports/*STUDYROOM*.csv")')
+@click.option('--variable', '-v', required=True,
+              help='Variable to extract (e.g., "Operative_Temperature")')
+@click.option('--output', '-o', type=click.Path(path_type=Path),
+              help='Output CSV file path (default: outputs/pivots/{variable}_All_Zones.csv)')
+@click.option('--summary', is_flag=True, help='Show detailed summary of processing')
+def pivot(directory, pattern, variable, output, summary):
+    """
+    Consolidate a variable from multiple zone exports into a single CSV.
+    
+    This command takes multiple exported CSV files (one per zone) and creates
+    a consolidated CSV with a specific variable for all zones in LONG format.
+    
+    Examples:
+    
+    \b
+    # Extract Operative_Temperature from all exports
+    energyplus-sim pivot --variable "Operative_Temperature"
+    
+    \b
+    # Extract from specific directory
+    energyplus-sim pivot --dir "outputs/exports/" --variable "Air_Temperature"
+    
+    \b
+    # Extract from files matching pattern
+    energyplus-sim pivot --input "outputs/exports/*STUDYROOM*.csv" --variable "Relative_Humidity"
+    
+    \b
+    # Custom output file
+    energyplus-sim pivot --variable "Operative_Temperature" --output "my_pivot.csv"
+    """
+    logger = logging.getLogger("climametrics.cli")
+    
+    try:
+        # Initialize pivot
+        pivot_tool = CSVPivot()
+        
+        # Set default directory if neither dir nor pattern provided
+        if not directory and not pattern:
+            directory = Path('outputs/exports')
+            click.echo(f"Using default directory: {directory}")
+        
+        # Set default output file
+        if not output:
+            # Clean variable name for filename
+            var_name = variable.replace('_', '').replace(' ', '')
+            output = Path(f'outputs/pivots/{variable}_All_Zones.csv')
+        
+        # Display operation info
+        click.echo(f"Variable to extract: {variable}")
+        if directory:
+            click.echo(f"Processing CSV files from: {directory}")
+        else:
+            click.echo(f"Processing CSV files matching: {pattern}")
+        click.echo(f"Output file: {output}")
+        click.echo()
+        
+        # Export pivot
+        pivot_tool.export_pivot(
+            output_file=output,
+            directory=directory,
+            pattern=pattern,
+            variable=variable
+        )
+        
+        click.echo("\nPivot completed successfully!")
+        
+    except Exception as e:
+        logger.error(f"Error creating pivot: {e}")
         click.echo(f"Error: {e}")
         raise click.Abort()
 

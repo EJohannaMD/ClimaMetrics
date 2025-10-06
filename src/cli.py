@@ -301,7 +301,7 @@ def analyze(idf_file, building, zones, materials, hvac, show_all, output_format,
 @cli.command()
 @click.argument('csv_file', type=click.Path(exists=True, path_type=Path))
 @click.option('--output', '-o', type=click.Path(path_type=Path), 
-              help='Output CSV file path (default: thermal_data.csv)')
+              help='Output CSV file path (default: auto-generated in outputs/exports/)')
 @click.option('--zones', help='Comma-separated list of zones to include (default: all zones)')
 @click.option('--start-date', help='Start date filter (YYYY-MM-DD format)')
 @click.option('--end-date', help='End date filter (YYYY-MM-DD format)')
@@ -333,9 +333,26 @@ def export(csv_file, output, zones, start_date, end_date, summary):
             zone_list = [zone.strip() for zone in zones.split(',')]
             click.echo(f"Filtering to zones: {zone_list}")
         
-        # Set default output file
+        # Auto-generate output file name if not provided
         if not output:
-            output = Path("thermal_data.csv")
+            # Extract base name from input CSV file
+            # Example: "TR9_Baseline__2020s_TMY_TerrassaCSTout.csv" -> "TR9_Baseline"
+            base_name = csv_file.stem
+            # Remove common suffixes
+            for suffix in ['out', '_out', '__out']:
+                if base_name.endswith(suffix):
+                    base_name = base_name[:-len(suffix)]
+            
+            # Generate zone suffix
+            if zone_list:
+                # Clean zone names: remove special characters, join with underscore
+                zone_suffix = '_'.join([z.replace(':', '_').replace(' ', '_') for z in zone_list])
+            else:
+                zone_suffix = 'ALL_ZONES'
+            
+            # Generate output file name
+            output_filename = f"{base_name}_{zone_suffix}.csv"
+            output = Path('outputs/exports') / output_filename
         
         # Export data
         click.echo(f"Exporting thermal data to: {output}")

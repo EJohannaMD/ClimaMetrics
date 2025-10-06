@@ -152,6 +152,14 @@ class CSVExporter:
             'Operative_Temperature',
             'Outdoor_Dry_Bulb_Temperature',
             'Outdoor_Dewpoint_Temperature',
+            'Zone_Infiltration_Sensible_Heat_Gain',
+            'Zone_Infiltration_Sensible_Heat_Loss',
+            'Zone_Infiltration_Total_Heat_Gain',
+            'Zone_Infiltration_Total_Heat_Loss',
+            'Zone_Infiltration_Latent_Heat_Gain',
+            'Zone_Infiltration_Latent_Heat_Loss',
+            'Zone_Ventilation_Sensible_Heat_Gain',
+            'Zone_Mixing_Sensible_Heat_Gain',
             'Zone'
         ]
         
@@ -221,6 +229,39 @@ class CSVExporter:
                 if occ_cols:
                     zone_cols['Occupancy'] = occ_cols[0]
                 
+                # Heat gain variables - search for heat gain columns for this zone
+                # People sensible heating rate (already found above, but store as heat gain)
+                
+                # Infiltration sensible heat gain
+                infil_sensible_gain_col = f"{zone_name}:Zone Infiltration Sensible Heat Gain Energy [J](Hourly:ON)"
+                if infil_sensible_gain_col in df.columns:
+                    zone_cols['Zone_Infiltration_Sensible_Heat_Gain'] = infil_sensible_gain_col
+                
+                # Infiltration sensible heat loss
+                infil_sensible_loss_col = f"{zone_name}:Zone Infiltration Sensible Heat Loss Energy [J](Hourly:ON)"
+                if infil_sensible_loss_col in df.columns:
+                    zone_cols['Zone_Infiltration_Sensible_Heat_Loss'] = infil_sensible_loss_col
+                
+                # Infiltration total heat gain
+                infil_total_gain_col = f"{zone_name}:Zone Infiltration Total Heat Gain Energy [J](Hourly:ON)"
+                if infil_total_gain_col in df.columns:
+                    zone_cols['Zone_Infiltration_Total_Heat_Gain'] = infil_total_gain_col
+                
+                # Infiltration total heat loss
+                infil_total_loss_col = f"{zone_name}:Zone Infiltration Total Heat Loss Energy [J](Hourly:ON)"
+                if infil_total_loss_col in df.columns:
+                    zone_cols['Zone_Infiltration_Total_Heat_Loss'] = infil_total_loss_col
+                
+                # Infiltration latent heat gain
+                infil_latent_gain_col = f"{zone_name}:Zone Infiltration Latent Heat Gain Energy [J](Hourly:ON)"
+                if infil_latent_gain_col in df.columns:
+                    zone_cols['Zone_Infiltration_Latent_Heat_Gain'] = infil_latent_gain_col
+                
+                # Infiltration latent heat loss
+                infil_latent_loss_col = f"{zone_name}:Zone Infiltration Latent Heat Loss Energy [J](Hourly:ON)"
+                if infil_latent_loss_col in df.columns:
+                    zone_cols['Zone_Infiltration_Latent_Heat_Loss'] = infil_latent_loss_col
+                
                 zone_columns[zone_name] = zone_cols
                 self.logger.info(f"Found zone {zone_name} with {len(zone_cols)} variables: {list(zone_cols.keys())}")
         
@@ -241,7 +282,13 @@ class CSVExporter:
             zone_cols.get('Air_Temperature', ''): 'Air_Temperature',
             zone_cols.get('Relative_Humidity', ''): 'Relative_Humidity',
             zone_cols.get('Mean_Radiant_Temperature', ''): 'Mean_Radiant_Temperature',
-            zone_cols.get('Occupancy', ''): 'Occupancy'
+            zone_cols.get('Occupancy', ''): 'Occupancy',
+            zone_cols.get('Zone_Infiltration_Sensible_Heat_Gain', ''): 'Zone_Infiltration_Sensible_Heat_Gain',
+            zone_cols.get('Zone_Infiltration_Sensible_Heat_Loss', ''): 'Zone_Infiltration_Sensible_Heat_Loss',
+            zone_cols.get('Zone_Infiltration_Total_Heat_Gain', ''): 'Zone_Infiltration_Total_Heat_Gain',
+            zone_cols.get('Zone_Infiltration_Total_Heat_Loss', ''): 'Zone_Infiltration_Total_Heat_Loss',
+            zone_cols.get('Zone_Infiltration_Latent_Heat_Gain', ''): 'Zone_Infiltration_Latent_Heat_Gain',
+            zone_cols.get('Zone_Infiltration_Latent_Heat_Loss', ''): 'Zone_Infiltration_Latent_Heat_Loss',
         }
         
         # Remove empty keys
@@ -295,6 +342,13 @@ class CSVExporter:
         
         self.logger.info(f"Thermal data exported to: {output_file}")
         self.logger.info(f"Exported {len(thermal_df)} rows for {thermal_df['Zone'].nunique()} zones")
+        
+        # Display exported columns summary
+        self.logger.info("\n=== COLUMNS SUMMARY ===")
+        for i, col in enumerate(thermal_df.columns, 1):
+            non_null_count = thermal_df[col].notna().sum()
+            percentage = (non_null_count / len(thermal_df)) * 100
+            self.logger.info(f"  {i:2d}. {col:<45} ({non_null_count:>5}/{len(thermal_df)} valores, {percentage:>6.2f}%)")
     
     def get_available_zones(self) -> List[str]:
         """

@@ -158,8 +158,8 @@ class CSVExporter:
             'Zone_Infiltration_Total_Heat_Loss',
             'Zone_Infiltration_Latent_Heat_Gain',
             'Zone_Infiltration_Latent_Heat_Loss',
-            'Zone_Ventilation_Sensible_Heat_Gain',
-            'Zone_Mixing_Sensible_Heat_Gain',
+            'Zone_Total_Internal_Total_Heating_Energy',
+            'Zone_Total_Internal_Latent_Gain_Energy',
             'Zone'
         ]
         
@@ -262,6 +262,16 @@ class CSVExporter:
                 if infil_latent_loss_col in df.columns:
                     zone_cols['Zone_Infiltration_Latent_Heat_Loss'] = infil_latent_loss_col
                 
+                # Total internal heating energy
+                total_internal_heating_col = f"{zone_name}:Zone Total Internal Total Heating Energy [J](Hourly:ON)"
+                if total_internal_heating_col in df.columns:
+                    zone_cols['Zone_Total_Internal_Total_Heating_Energy'] = total_internal_heating_col
+                
+                # Total internal latent gain energy
+                total_internal_latent_col = f"{zone_name}:Zone Total Internal Latent Gain Energy [J](Hourly:ON)"
+                if total_internal_latent_col in df.columns:
+                    zone_cols['Zone_Total_Internal_Latent_Gain_Energy'] = total_internal_latent_col
+                
                 zone_columns[zone_name] = zone_cols
                 self.logger.info(f"Found zone {zone_name} with {len(zone_cols)} variables: {list(zone_cols.keys())}")
         
@@ -289,6 +299,8 @@ class CSVExporter:
             zone_cols.get('Zone_Infiltration_Total_Heat_Loss', ''): 'Zone_Infiltration_Total_Heat_Loss',
             zone_cols.get('Zone_Infiltration_Latent_Heat_Gain', ''): 'Zone_Infiltration_Latent_Heat_Gain',
             zone_cols.get('Zone_Infiltration_Latent_Heat_Loss', ''): 'Zone_Infiltration_Latent_Heat_Loss',
+            zone_cols.get('Zone_Total_Internal_Total_Heating_Energy', ''): 'Zone_Total_Internal_Total_Heating_Energy',
+            zone_cols.get('Zone_Total_Internal_Latent_Gain_Energy', ''): 'Zone_Total_Internal_Latent_Gain_Energy',
         }
         
         # Remove empty keys
@@ -317,6 +329,33 @@ class CSVExporter:
         # Extract thermal data
         thermal_df = self.extract_thermal_data(df)
         
+        # Store column mapping for summary (get first zone as reference)
+        zone_columns = self._find_zone_columns(df, {
+            'Date/Time': 'Date/Time',
+            'Outdoor_Dry_Bulb_Temperature': 'Environment:Site Outdoor Air Drybulb Temperature [C](Hourly)',
+            'Outdoor_Dewpoint_Temperature': 'Environment:Site Outdoor Air Dewpoint Temperature [C](Hourly)'
+        })
+        
+        # Build reverse mapping from standardized names to original names
+        column_mapping = {
+            'Date/Time': 'Date/Time',
+            'Zone': 'Zone'
+        }
+        
+        # Get outdoor columns
+        if 'Environment:Site Outdoor Air Drybulb Temperature [C](Hourly)' in df.columns:
+            column_mapping['Outdoor_Dry_Bulb_Temperature'] = 'Environment:Site Outdoor Air Drybulb Temperature [C](Hourly)'
+        if 'Environment:Site Outdoor Air Dewpoint Temperature [C](Hourly)' in df.columns:
+            column_mapping['Outdoor_Dewpoint_Temperature'] = 'Environment:Site Outdoor Air Dewpoint Temperature [C](Hourly)'
+        
+        # Get zone-specific columns (use first zone as reference)
+        if zone_columns:
+            first_zone_cols = next(iter(zone_columns.values()))
+            for std_name, orig_col in first_zone_cols.items():
+                # Simplify the original column name by removing zone prefix
+                simplified = orig_col.split(':', 2)[-1] if ':' in orig_col else orig_col
+                column_mapping[std_name] = simplified
+        
         if thermal_df.empty:
             self.logger.error("No thermal data to export")
             return
@@ -343,12 +382,26 @@ class CSVExporter:
         self.logger.info(f"Thermal data exported to: {output_file}")
         self.logger.info(f"Exported {len(thermal_df)} rows for {thermal_df['Zone'].nunique()} zones")
         
-        # Display exported columns summary
+        # Display exported columns summary in table format
         self.logger.info("\n=== COLUMNS SUMMARY ===")
+        header = f"{'#':<4}| {'Exported Column Name':<40}| {'Original EnergyPlus Variable':<70}| {'Values':<15}"
+        separator = "-" * 4 + "+" + "-" * 41 + "+" + "-" * 71 + "+" + "-" * 15
+        self.logger.info(header)
+        self.logger.info(separator)
+        
         for i, col in enumerate(thermal_df.columns, 1):
             non_null_count = thermal_df[col].notna().sum()
             percentage = (non_null_count / len(thermal_df)) * 100
-            self.logger.info(f"  {i:2d}. {col:<45} ({non_null_count:>5}/{len(thermal_df)} valores, {percentage:>6.2f}%)")
+            
+            # Get original column name from mapping
+            original_name = column_mapping.get(col, col)
+            
+            # Format values string
+            values_str = f"{non_null_count}/{len(thermal_df)} ({percentage:.0f}%)"
+            
+            # Print table row
+            row = f"{i:<4}| {col:<40}| {original_name:<70}| {values_str:<15}"
+            self.logger.info(row)
     
     def get_available_zones(self) -> List[str]:
         """

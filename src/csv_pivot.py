@@ -47,28 +47,54 @@ class CSVPivot:
         self.logger.info(f"Found {len(csv_files)} CSV files to process")
         return csv_files
     
-    def validate_variable(self, csv_files: List[Path], variable: str) -> bool:
+    def validate_variable(self, csv_files: List[Path], variables: str) -> bool:
         """
-        Validate that the variable exists in all CSV files.
+        Validate that the variables exist in at least one CSV file.
         
         Args:
             csv_files: List of CSV file paths
-            variable: Variable name to check
+            variables: Variable name(s) to check (comma-separated for multiple)
             
         Returns:
-            True if variable exists in all files
+            True if at least one variable exists in at least one file
         """
+        # Parse variables
+        variable_list = [v.strip() for v in variables.split(',')]
+        
+        # Track which variables are found
+        found_vars = set()
+        
         for csv_file in csv_files:
             try:
                 # Read first row to get headers
                 df = pd.read_csv(csv_file, sep=';', nrows=0)
-                if variable not in df.columns:
-                    self.logger.error(f"Variable '{variable}' not found in {csv_file.name}")
-                    self.logger.info(f"Available columns: {list(df.columns)}")
-                    return False
+                
+                # Check which variables exist in this file
+                for var in variable_list:
+                    if var in df.columns:
+                        found_vars.add(var)
+                        
             except Exception as e:
                 self.logger.error(f"Error reading {csv_file.name}: {e}")
                 return False
+        
+        # Check if at least one variable was found
+        if not found_vars:
+            self.logger.error(f"None of the requested variables found in any file: {variable_list}")
+            # Show available columns from first file
+            try:
+                df = pd.read_csv(csv_files[0], sep=';', nrows=0)
+                self.logger.info(f"Available columns in {csv_files[0].name}: {list(df.columns)}")
+            except:
+                pass
+            return False
+        
+        # Warn about missing variables
+        missing_vars = set(variable_list) - found_vars
+        if missing_vars:
+            self.logger.warning(f"Variables not found in any file: {list(missing_vars)}")
+        
+        self.logger.info(f"Variables that will be extracted: {list(found_vars)}")
         
         return True
     
@@ -125,18 +151,23 @@ class CSVPivot:
             self.logger.error(f"Error adding year to dates: {e}")
             return date_series
     
-    def pivot_variable(self, csv_files: List[Path], variable: str, year: Optional[int] = None) -> pd.DataFrame:
+    def pivot_variable(self, csv_files: List[Path], variables: str, year: Optional[int] = None, simulation: Optional[str] = None) -> pd.DataFrame:
         """
-        Extract and consolidate a variable from multiple CSV files.
+        Extract and consolidate variables from multiple CSV files.
         
         Args:
             csv_files: List of CSV file paths
-            variable: Variable name to extract
+            variables: Variable name(s) to extract (comma-separated for multiple)
             year: Optional year to add to Date/Time column
+            simulation: Optional simulation name to add as a column
             
         Returns:
-            Consolidated DataFrame
+            Consolidated DataFrame with columns: Date/Time, Zone, Indicator, Value, [Simulation]
         """
+        # Parse variables (support comma-separated list)
+        variable_list = [v.strip() for v in variables.split(',')]
+        self.logger.info(f"Variables to extract: {variable_list}")
+        
         all_data = []
         
         for csv_file in csv_files:
@@ -146,13 +177,40 @@ class CSVPivot:
                 # Read CSV with semicolon separator
                 df = pd.read_csv(csv_file, sep=';')
                 
-                # Extract only needed columns
-                if 'Date/Time' in df.columns and 'Zone' in df.columns and variable in df.columns:
-                    extracted = df[['Date/Time', 'Zone', variable]].copy()
-                    all_data.append(extracted)
-                    self.logger.info(f"  - Extracted {len(extracted)} rows for zone: {df['Zone'].iloc[0]}")
-                else:
-                    self.logger.warning(f"  - Skipping {csv_file.name}: missing required columns")
+                # Check required columns
+                if 'Date/Time' not in df.columns or 'Zone' not in df.columns:
+                    self.logger.warning(f"  - Skipping {csv_file.name}: missing Date/Time or Zone columns")
+                    continue
+                
+                # Extract columns that exist
+                columns_to_extract = ['Date/Time', 'Zone']
+                available_vars = []
+                
+                for var in variable_list:
+                    if var in df.columns:
+                        columns_to_extract.append(var)
+                        available_vars.append(var)
+                    else:
+                        self.logger.warning(f"  - Variable '{var}' not found in {csv_file.name}")
+                
+                if not available_vars:
+                    self.logger.warning(f"  - Skipping {csv_file.name}: no requested variables found")
+                    continue
+                
+                # Extract data
+                extracted = df[columns_to_extract].copy()
+                
+                # Convert to LONG format: Date/Time, Zone, Indicator, Value
+                # Using pd.melt to transform from wide to long format
+                melted = extracted.melt(
+                    id_vars=['Date/Time', 'Zone'],
+                    value_vars=available_vars,
+                    var_name='Indicator',
+                    value_name='Value'
+                )
+                
+                all_data.append(melted)
+                self.logger.info(f"  - Extracted {len(melted)} rows ({len(available_vars)} variables) for zone: {df['Zone'].iloc[0]}")
                     
             except Exception as e:
                 self.logger.error(f"Error processing {csv_file.name}: {e}")
@@ -170,10 +228,16 @@ class CSVPivot:
             self.logger.info(f"Adding year {year} to Date/Time column...")
             result_df['Date/Time'] = self._add_year_to_datetime(result_df['Date/Time'], year)
         
-        # Sort by Date/Time and Zone for better readability
-        result_df = result_df.sort_values(['Date/Time', 'Zone'])
+        # Add simulation column if specified
+        if simulation:
+            self.logger.info(f"Adding Simulation column with value: '{simulation}'")
+            result_df['Simulation'] = simulation
+        
+        # Sort by Date/Time, Zone, and Indicator for better readability
+        result_df = result_df.sort_values(['Date/Time', 'Zone', 'Indicator'])
         
         self.logger.info(f"Consolidated {len(result_df)} total rows from {len(all_data)} zones")
+        self.logger.info(f"Variables in output: {result_df['Indicator'].unique().tolist()}")
         
         return result_df
     
@@ -182,7 +246,8 @@ class CSVPivot:
                      directory: Path = None,
                      pattern: str = None,
                      variable: str = 'Operative_Temperature',
-                     year: Optional[int] = None) -> None:
+                     year: Optional[int] = None,
+                     simulation: Optional[str] = None) -> None:
         """
         Export pivoted data to CSV file.
         
@@ -192,6 +257,7 @@ class CSVPivot:
             pattern: Glob pattern for file matching
             variable: Variable to extract
             year: Optional year to add to Date/Time column
+            simulation: Optional simulation name to add as a column
         """
         self.logger.info("Starting pivot operation...")
         
@@ -209,16 +275,25 @@ class CSVPivot:
             size_mb = csv_file.stat().st_size / (1024 * 1024)
             self.logger.info(f"  - {csv_file.name} ({size_mb:.1f} MB)")
         
-        # Validate variable exists in all files
-        self.logger.info(f"Validating variable: {variable}")
+        # Validate variables exist in files
+        self.logger.info(f"Validating variables: {variable}")
         if not self.validate_variable(csv_files, variable):
             return
         
-        # Pivot the variable
-        self.logger.info(f"Extracting variable: {variable}")
+        # Pivot the variables
+        variable_list = [v.strip() for v in variable.split(',')]
+        if len(variable_list) == 1:
+            self.logger.info(f"Extracting variable: {variable}")
+        else:
+            self.logger.info(f"Extracting {len(variable_list)} variables: {variable_list}")
+        
         if year:
             self.logger.info(f"Year will be added: {year}")
-        result_df = self.pivot_variable(csv_files, variable, year)
+        
+        if simulation:
+            self.logger.info(f"Simulation name will be added: '{simulation}'")
+        
+        result_df = self.pivot_variable(csv_files, variable, year, simulation)
         
         if result_df.empty:
             self.logger.error("No data to export")

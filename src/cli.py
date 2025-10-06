@@ -584,41 +584,56 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
 @click.option('--input', 'pattern', type=str,
               help='Glob pattern for input files (e.g., "outputs/exports/*STUDYROOM*.csv")')
 @click.option('--variable', '-v', required=True,
-              help='Variable to extract (e.g., "Operative_Temperature")')
+              help='Variable(s) to extract (e.g., "Operative_Temperature" or "Operative_Temperature,Air_Temperature")')
 @click.option('--year', '-y', type=int,
               help='Year to add to Date/Time column (e.g., 2020, 2025)')
+@click.option('--simulation', '-s', type=str,
+              help='Simulation name to add as a column (e.g., "Baseline_TMY2020s", "Future_2050s")')
 @click.option('--output', '-o', type=click.Path(path_type=Path),
               help='Output CSV file path (default: outputs/pivots/{variable}_All_Zones.csv)')
 @click.option('--summary', is_flag=True, help='Show detailed summary of processing')
-def pivot(directory, pattern, variable, year, output, summary):
+def pivot(directory, pattern, variable, year, simulation, output, summary):
     """
-    Consolidate a variable from multiple zone exports into a single CSV.
+    Consolidate variable(s) from multiple zone exports into a single CSV.
     
     This command takes multiple exported CSV files (one per zone) and creates
-    a consolidated CSV with a specific variable for all zones in LONG format.
-    Optionally, you can add a year to the Date/Time column for temporal analysis.
+    a consolidated CSV with selected variable(s) for all zones in LONG format
+    with columns: Date/Time, Zone, Indicator, Value, [Simulation].
+    Optionally, you can add a year to the Date/Time column and a simulation name.
     
     Examples:
     
     \b
-    # Extract Operative_Temperature from all exports
+    # Extract single variable from all exports
     energyplus-sim pivot --variable "Operative_Temperature"
+    
+    \b
+    # Extract multiple variables in one file
+    energyplus-sim pivot --variable "Operative_Temperature,Air_Temperature,Relative_Humidity"
     
     \b
     # Extract with year 2020 added to dates
     energyplus-sim pivot --variable "Operative_Temperature" --year 2020
     
     \b
-    # Extract from specific directory
-    energyplus-sim pivot --dir "outputs/exports/" --variable "Air_Temperature"
+    # Extract with year and simulation name
+    energyplus-sim pivot --variable "Operative_Temperature" --year 2020 --simulation "Baseline_TMY2020s"
     
     \b
-    # Extract from files matching pattern with year
-    energyplus-sim pivot --input "outputs/exports/*STUDYROOM*.csv" --variable "Relative_Humidity" --year 2025
+    # Extract multiple variables with year and simulation
+    energyplus-sim pivot -v "Operative_Temperature,Air_Temperature" -y 2020 -s "Baseline_2020s"
     
     \b
-    # Custom output file
-    energyplus-sim pivot --variable "Operative_Temperature" --output "my_pivot.csv"
+    # Extract from specific directory with simulation
+    energyplus-sim pivot --dir "outputs/exports/" --variable "Air_Temperature" --simulation "Future_2050s"
+    
+    \b
+    # Extract from files matching pattern
+    energyplus-sim pivot --input "outputs/exports/*STUDYROOM*.csv" --variable "Relative_Humidity,Occupancy" --year 2025
+    
+    \b
+    # Custom output file with simulation
+    energyplus-sim pivot --variable "Operative_Temperature" --simulation "Baseline" --output "baseline_pivot.csv"
     """
     logger = logging.getLogger("climametrics.cli")
     
@@ -652,7 +667,8 @@ def pivot(directory, pattern, variable, year, output, summary):
             directory=directory,
             pattern=pattern,
             variable=variable,
-            year=year
+            year=year,
+            simulation=simulation
         )
         
         click.echo("\nPivot completed successfully!")

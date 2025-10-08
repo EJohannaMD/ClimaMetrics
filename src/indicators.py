@@ -191,15 +191,15 @@ class ThermalIndicators:
 
         # Create flag for overheating during occupied hours
         data_frame_iod['overheating_flag'] = np.where(
-            (data_frame_iod['Top_minus_Tcomf'] > 0) & (data_frame['Occupancy'] > 0),
+            (data_frame['Occupancy'] > 0),
             1, 0
         )  # Only count positive excess over comfort temperature during occupied periods
 
         # Set excess temperature to 0 when not overheating or not occupied
         data_frame_iod['excess_temp'] = np.where(
-            data_frame_iod['overheating_flag'] == 1,
+            (data_frame_iod['overheating_flag'] == 1) & (data_frame_iod['Top_minus_Tcomf'] > 0),
             data_frame_iod['Top_minus_Tcomf'],
-            np.nan
+            0
         )
 
         # Calculate IOD by zone (average excess temperature during occupied hours)

@@ -372,13 +372,21 @@ class ThermalIndicators:
         
         # Parse datetime
         data_frame['DateTime'] = self._parse_datetime(data_frame['Date/Time'])
-        
+        # TODO FIX THIS SHIT
         # Calculate excess temperature for occupied periods
+        # data_frame['excess_temp'] = np.where(
+        #    (data_frame['Occupancy'] > 0) & (data_frame['Operative_Temperature'] > self.COMFORT_TEMPERATURE),
+        #    data_frame['Operative_Temperature'] - self.COMFORT_TEMPERATURE,
+        #    0
+        #)
+
         data_frame['excess_temp'] = np.where(
-            (data_frame['Occupancy'] > 0) & (data_frame['Operative_Temperature'] > self.COMFORT_TEMPERATURE),
-            data_frame['Operative_Temperature'] - self.COMFORT_TEMPERATURE,
-            0
+            data_frame['Occupancy'] > 0,
+            np.maximum(data_frame['Operative_Temperature'] - self.COMFORT_TEMPERATURE, 0),
+            np.nan
         )
+
+        data_frame = data_frame.dropna(subset=['excess_temp'])
         
         # Pivot to WIDE format: DateTime x Zones
         iod_wide = data_frame.pivot_table(
@@ -386,9 +394,13 @@ class ThermalIndicators:
             columns='Zone',
             values='excess_temp',
             aggfunc='sum'
-        ).fillna(0)
+        )
+
+        iod_data = data_frame.groupby(['DateTime', 'Zone'])['excess_temp'].first().reset_index()
+
+        print(iod_data.head())
         
-        return iod_wide
+        return iod_data
     
     def calculate_ambient_warmness_degree(self, data_frame: pd.DataFrame) -> pd.DataFrame:
         """

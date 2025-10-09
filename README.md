@@ -17,7 +17,8 @@ ClimaMetrics is a command-line tool for managing and executing EnergyPlus simula
 - **Data Consolidation (Pivot)**: Consolidate variables from multiple zones into unified CSV files for comparative analysis
 - **Heat Gain Variables**: Export detailed infiltration and internal heat gain/loss variables (sensible, latent, total)
 - **Column Mapping**: Automatic display of exported columns with their original EnergyPlus variable names
-- **Thermal Indicators**: Calculate thermal comfort indicators (IOD, AWD, ALPHA, HI, DDH, DI)
+- **Thermal Indicators**: Calculate thermal comfort indicators (IOD, AWD, ALPHA, HI, DDH, DI) - [Formulas](docs/INDICATORS.md) | [Examples](docs/EXAMPLES.md)
+- **Power BI Export**: Export indicators in ULTRA-LONG format optimized for Power BI dashboards and advanced analytics
 - **IDF Analysis**: Analyze IDF files to extract building, zone, and material information
 - **Column Explorer**: Explore and filter column headers from EnergyPlus CSV output files
 - **Cross-platform**: Works on Windows, macOS, and Linux
@@ -85,6 +86,15 @@ energyplus-sim analyze building.idf
 energyplus-sim analyze building.idf --zones --materials
 
 # Export thermal data to CSV (auto-generates output filename)
+energyplus-sim export results.csv --zones "ZONE1,ZONE2"
+
+# Calculate thermal comfort indicators
+energyplus-sim indicators results.csv --zone-group studyrooms --simulation "Baseline"
+
+# Export indicators for Power BI analysis
+energyplus-sim powerbi results.csv --zone-group studyrooms --simulation "Baseline"
+
+# Consolidate variables across zones
 energyplus-sim export outputs/results/simulation/results.csv --zones "ZONE1"
 
 # Export with custom output
@@ -150,7 +160,8 @@ ClimaMetrics/
 │   ├── csv_exporter.py    # CSV data export (zone-specific)
 │   ├── csv_pivot.py       # CSV pivot consolidation (multi-zone)
 │   ├── column_explorer.py # Column header exploration
-│   └── indicators.py      # Thermal comfort indicators
+│   ├── indicators.py      # Thermal comfort indicators
+│   └── powerbi_exporter.py # Power BI format export (ULTRA-LONG)
 ├── data/                   # Input data
 │   ├── idf/               # IDF files
 │   └── weather/           # Weather files
@@ -158,10 +169,15 @@ ClimaMetrics/
 │   ├── results/           # Simulation results (EnergyPlus output)
 │   ├── exports/           # Exported thermal data (zone-specific CSV)
 │   ├── pivots/            # Consolidated data (multi-zone CSV)
+│   ├── indicators/        # Thermal comfort indicators (WIDE format)
+│   ├── powerbi/           # Power BI exports (ULTRA-LONG format)
 │   └── logs/              # Log files
 ├── config/                 # Configuration files
 │   ├── settings.yaml      # Main settings
 │   └── energyplus_paths.yaml  # EnergyPlus paths
+├── docs/                   # Documentation
+│   ├── INDICATORS.md      # Thermal comfort indicators formulas
+│   └── EXAMPLES.md        # Practical calculation examples
 └── tests/                  # Test files
 ```
 
@@ -471,6 +487,8 @@ energyplus-sim columns results.csv --search "Energy" --limit 20
 
 The `indicators` command calculates thermal comfort indicators from exported thermal data, providing comprehensive analysis of building thermal performance.
 
+📊 **[View Detailed Mathematical Formulas →](docs/INDICATORS.md)** | 💡 **[See Practical Examples →](docs/EXAMPLES.md)**
+
 ### Basic Usage
 
 ```bash
@@ -557,6 +575,246 @@ The indicators provide comprehensive thermal comfort analysis:
 - **HVAC System Design**: Use indicators for system sizing and optimization
 - **Comfort Standards Compliance**: Verify compliance with thermal comfort standards
 - **Research and Development**: Support academic and professional research
+
+## Power BI Export Command
+
+The `powerbi` command exports thermal comfort indicators in **ULTRA-LONG format**, optimized for Power BI analysis and advanced data modeling. This format consolidates all indicators into a single CSV file with a fully normalized structure.
+
+📊 **[View Indicator Formulas](docs/INDICATORS.md)** | 📖 **[See Examples](docs/EXAMPLES.md)** | 💡 **Perfect for dashboards, DAX calculations, and multi-dimensional analysis**
+
+### Output Format
+
+The Power BI export uses a 5-column structure:
+
+```csv
+Simulation,Indicator,DateTime,Zone,Value
+Baseline_TMY2020s,IOD,2020-01-01 00:00:00,Zone1,0.5
+Baseline_TMY2020s,ALPHA,2020-01-01 00:00:00,Zone1,0.7
+Baseline_TMY2020s,AWD,2020-01-01 00:00:00,Environment,5.2
+Baseline_TMY2020s,alphatot,,,0.562
+Baseline_TMY2020s,DDH,,Zone1,84.25
+```
+
+### Key Features
+
+- ✅ **Single consolidated CSV** with all indicators
+- ✅ **Fully normalized** (ULTRA-LONG format) for Power BI
+- ✅ **Temporal indicators**: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
+- ✅ **Aggregated indicators**: DDH (sum across time), alphatot (global average)
+- ✅ **Environmental indicator**: AWD (Zone = "Environment")
+- ✅ **Ready for Power BI** data modeling and DAX calculations
+
+### Basic Usage
+
+```bash
+# Export all indicators for a zone group
+energyplus-sim powerbi outputs/results/simulation.csv \
+    --zone-group studyrooms \
+    --simulation "Baseline_TMY2020s"
+
+# Export specific indicators
+energyplus-sim powerbi outputs/results/simulation.csv \
+    --zones "ZONE1,ZONE2,ZONE3" \
+    --indicators "IOD,AWD,ALPHA,DDH" \
+    --simulation "Future_2050s"
+
+# Customize output file and parameters
+energyplus-sim powerbi outputs/results/simulation.csv \
+    --zone-group all \
+    --simulation "Test_Run" \
+    --output outputs/powerbi/my_analysis.csv \
+    --comfort-temp 25.0 \
+    --base-temp 19.0 \
+    --year 2025
+```
+
+### Available Indicators
+
+#### Temporal Indicators (hourly values with DateTime)
+- **IOD**: Indoor Overheating Degree (by zone)
+- **AWD**: Ambient Warmness Degree (environmental, Zone = "Environment")
+- **ALPHA**: Overheating Escalator Factor (IOD/AWD ratio, by zone)
+- **HI**: Heat Index - Apparent Temperature (by zone)
+- **HIlevel**: Heat Index Risk Categories (by zone, categorical)
+- **DI**: Discomfort Index (by zone)
+- **DIlevel**: Discomfort Index Risk Categories (by zone, categorical)
+
+#### Aggregated Indicators (single values, DateTime empty)
+- **alphatot**: Global ALPHA average across all zones and time periods (Zone = "values")
+- **DDH**: Degree-weighted Discomfort Hours - Sum across entire simulation period (by zone)
+
+### Command Options
+
+- `--zones, -z`: Comma-separated list of zone names to analyze
+- `--zone-group, -g`: Zone group name from settings.yaml (alternative to --zones)
+- `--output, -o`: Output CSV file path (default: `outputs/powerbi/{simulation}_powerbi.csv`)
+- `--simulation, -s`: Simulation name (required, used in output)
+- `--indicators, -i`: Comma-separated list of indicators to calculate (default: all)
+- `--comfort-temp`: Comfort temperature for IOD calculation (default: 26.5°C)
+- `--base-temp`: Base outside temperature for AWD calculation (default: 18.0°C)
+- `--year, -y`: Year for datetime parsing (default: 2020)
+- `--start-date`: Start date for filtering in format "MM/DD" (e.g., "06/22")
+- `--end-date`: End date for filtering in format "MM/DD" (e.g., "08/30")
+
+### Power BI Data Model
+
+The ULTRA-LONG format enables powerful Power BI features:
+
+#### 1. **Star Schema Design**
+```
+Fact Table: PowerBI_Data (your CSV)
+├─ Dimension: Simulation
+├─ Dimension: Indicator
+├─ Dimension: DateTime
+├─ Dimension: Zone
+└─ Measure: Value
+```
+
+#### 2. **DAX Measures Examples**
+```dax
+-- Average IOD across all zones
+IOD_Average = 
+CALCULATE(
+    AVERAGE(PowerBI_Data[Value]),
+    PowerBI_Data[Indicator] = "IOD"
+)
+
+-- Max Heat Index per zone
+HI_Max_By_Zone = 
+CALCULATE(
+    MAX(PowerBI_Data[Value]),
+    PowerBI_Data[Indicator] = "HI"
+)
+
+-- Count of dangerous heat index hours
+HI_Danger_Hours = 
+CALCULATE(
+    COUNTROWS(PowerBI_Data),
+    PowerBI_Data[Indicator] = "HIlevel",
+    PowerBI_Data[Value] = "DANGER"
+)
+```
+
+#### 3. **Dynamic Visualizations**
+- **Slicers**: Filter by Simulation, Indicator, Zone, Date Range
+- **Line Charts**: Show temporal trends for any indicator across zones
+- **Heatmaps**: DateTime (rows) × Zone (columns) with Value as color
+- **Comparatives**: Multiple simulations side-by-side
+- **KPI Cards**: Display alphatot, total DDH, max HI
+
+### Workflow Example
+
+#### Full Year Analysis
+```bash
+# Step 1: Run EnergyPlus simulation
+energyplus-sim run --all
+
+# Step 2: Export full year to Power BI format
+energyplus-sim powerbi outputs/results/TR9_Baseline/TR9_Baselineout.csv \
+    --zone-group all_zones \
+    --simulation "Baseline_TMY2020s" \
+    --year 2020
+
+# Step 3: Import outputs/powerbi/Baseline_TMY2020s_powerbi.csv into Power BI
+
+# Step 4: Create relationships and measures in Power BI
+
+# Step 5: Build dashboards with slicers, charts, and KPIs
+```
+
+#### Summer Period Comparison (Recommended for Comparative Studies)
+```bash
+# Export multiple simulations with SAME date range for comparison
+# Date range: June 22 to August 30 (summer period, 70 days)
+
+# Baseline scenario
+energyplus-sim powerbi outputs/results/Baseline/out.csv \
+    --zone-group studyrooms \
+    --simulation "Baseline_Summer_2020s" \
+    --start-date "06/22" \
+    --end-date "08/30" \
+    --year 2020
+
+# Future climate scenario
+energyplus-sim powerbi outputs/results/Future_2050s/out.csv \
+    --zone-group studyrooms \
+    --simulation "Future_Summer_2050s" \
+    --start-date "06/22" \
+    --end-date "08/30" \
+    --year 2050
+
+# Improved design scenario
+energyplus-sim powerbi outputs/results/Improved/out.csv \
+    --zone-group studyrooms \
+    --simulation "Improved_Summer_2020s" \
+    --start-date "06/22" \
+    --end-date "08/30" \
+    --year 2020
+
+# In Power BI: Combine all files and compare DDH and alphatot values
+# ✅ All scenarios use same date range → DDH values are directly comparable
+```
+
+### Output File Statistics
+
+For a typical simulation with 2 zones and all indicators over 1 year:
+
+| Indicator | Rows | Calculation |
+|-----------|------|-------------|
+| IOD | 17,520 | 8,760 hours × 2 zones |
+| AWD | 8,760 | 8,760 hours × 1 (Environment) |
+| ALPHA | 17,520 | 8,760 hours × 2 zones |
+| HI | 17,520 | 8,760 hours × 2 zones |
+| HIlevel | 17,520 | 8,760 hours × 2 zones |
+| DI | 17,520 | 8,760 hours × 2 zones |
+| DIlevel | 17,520 | 8,760 hours × 2 zones |
+| DDH | 2 | 1 aggregated value × 2 zones |
+| alphatot | 1 | 1 global value |
+| **TOTAL** | **131,881** | **+ 1 header = 131,882 rows** |
+
+### Advantages for Power BI
+
+1. ✅ **Single Data Source**: One file for all indicators and zones
+2. ✅ **Scalability**: Easy to add more simulations (just append rows)
+3. ✅ **Flexibility**: Filter and slice data dynamically
+4. ✅ **Performance**: Optimized for Power BI's columnar engine
+5. ✅ **Relationships**: Natural star schema for data modeling
+6. ✅ **Comparisons**: Multiple simulations/scenarios in one dataset
+
+### Date Range Filtering
+
+**Important Notes:**
+
+- ✅ **alphatot**: Calculated as average over filtered period (always comparable as a ratio)
+- ⚠️ **DDH**: Calculated as sum over filtered period (only comparable when using SAME date range)
+- 💡 **Best Practice**: Use consistent date ranges (e.g., "06/22" to "08/30") across all simulations for valid comparisons
+- 📊 **Typical Use**: Filter summer months to focus on overheating periods
+
+**Example - Valid DDH Comparison:**
+```bash
+# All simulations use 06/22 to 08/30 (70 days)
+Baseline_Summer:    DDH = 270.5 °C·h
+Future_2050s:       DDH = 450.8 °C·h  (67% worse)
+Improved_Design:    DDH = 180.2 °C·h  (33% better)
+✅ Valid comparison - same period
+```
+
+**Example - Invalid DDH Comparison:**
+```bash
+# Different periods - NOT comparable!
+Baseline (full year):  DDH = 1,850 °C·h  (365 days)
+Summer_Only:           DDH = 620 °C·h    (70 days)
+❌ Cannot compare - different time periods
+```
+
+### Use Cases
+
+- **Interactive Dashboards**: Build comprehensive thermal comfort dashboards
+- **Scenario Comparison**: Compare multiple climate scenarios or design alternatives
+- **Time Series Analysis**: Analyze temporal patterns with Power BI time intelligence
+- **Spatial Analysis**: Compare thermal performance across different zones
+- **Regulatory Compliance**: Generate reports for building standards compliance
+- **Client Presentations**: Create professional visualizations for stakeholders
 
 ## Pivot Command
 

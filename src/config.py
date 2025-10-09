@@ -146,6 +146,79 @@ class Config:
     def get_log_file(self) -> Path:
         """Get the log file path."""
         return Path(self.get('logging.file', 'outputs/logs/simulation.log')).resolve()
+    
+    # Zone configuration methods
+    def get_default_zones(self) -> List[str]:
+        """Get the default zones list."""
+        return self.get('zones.default_zones', [])
+    
+    def get_zone_groups(self) -> Dict[str, List[str]]:
+        """Get all zone groups."""
+        return self.get('zones.zone_groups', {})
+    
+    def get_zone_group(self, group_name: str) -> Optional[List[str]]:
+        """
+        Get a specific zone group by name.
+        
+        Args:
+            group_name: Name of the zone group
+            
+        Returns:
+            List of zone names or None if group not found
+        """
+        zone_groups = self.get_zone_groups()
+        return zone_groups.get(group_name)
+    
+    # Export configuration methods
+    def get_export_output_dir(self) -> Path:
+        """Get the export output directory path."""
+        return Path(self.get('export.output_dir', 'outputs/exports')).resolve()
+    
+    def get_export_auto_filename(self) -> bool:
+        """Get whether to auto-generate export filenames."""
+        return self.get('export.auto_filename', True)
+    
+    def get_export_default_variables(self) -> List[str]:
+        """Get the default variables to export."""
+        return self.get('export.default_variables', [])
+    
+    def get_export_date_range(self) -> Dict[str, Optional[str]]:
+        """Get the default date range for exports."""
+        return self.get('export.date_range', {'start_date': None, 'end_date': None})
+    
+    # Pivot configuration methods
+    def get_pivot_output_dir(self) -> Path:
+        """Get the pivot output directory path."""
+        return Path(self.get('pivot.output_dir', 'outputs/pivots')).resolve()
+    
+    def get_pivot_auto_filename(self) -> bool:
+        """Get whether to auto-generate pivot filenames."""
+        return self.get('pivot.auto_filename', True)
+    
+    def get_pivot_default_variables(self) -> List[str]:
+        """Get the default variables to pivot."""
+        return self.get('pivot.default_variables', [])
+    
+    def get_pivot_default_year(self) -> Optional[int]:
+        """Get the default year for pivot."""
+        return self.get('pivot.default_year')
+    
+    def get_pivot_default_simulation(self) -> Optional[str]:
+        """Get the default simulation name for pivot."""
+        return self.get('pivot.default_simulation')
+    
+    # Indicators configuration methods
+    def get_indicators_zone_variables(self) -> Dict[str, Any]:
+        """Get zone variables configuration for indicators."""
+        return self.get('indicators.zone_variables', {})
+    
+    def get_indicators_environmental_variables(self) -> Dict[str, Any]:
+        """Get environmental variables configuration for indicators."""
+        return self.get('indicators.environmental_variables', {})
+    
+    def get_indicators_calculations_config(self) -> Dict[str, Any]:
+        """Get calculations configuration for indicators."""
+        return self.get('indicators.calculations', {})
 
 
 # Global configuration instance

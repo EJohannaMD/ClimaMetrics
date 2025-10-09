@@ -31,3 +31,155 @@ output:
   include_summary: true
   compress_results: false
 
+# Zone configuration
+zones:
+  # Default zones to export/analyze (leave empty for all zones)
+  default_zones: []
+  
+  # Predefined zone groups for quick access
+  zone_groups:
+    all_zones:
+      - "1XPLANTA1:STUDYROOM"
+      - "1XPLANTA1:READINGROOM"
+      - "1XPLANTA1:OFFICEROOM"
+      - "2XPLANTA2:STUDYROOM"
+      - "2XPLANTA2:READINGROOM"
+      - "2XPLANTA2:PCROOM"
+    studyrooms:
+      - "1XPLANTA1:STUDYROOM"
+      - "2XPLANTA2:STUDYROOM"
+    
+    all_plant1:
+      - "1XPLANTA1:STUDYROOM"
+      - "1XPLANTA1:READINGROOM"
+      - "1XPLANTA1:OFFICEROOM"
+    
+    all_plant2:
+      - "2XPLANTA2:STUDYROOM"
+      - "2XPLANTA2:READINGROOM"
+      - "2XPLANTA2:PCROOM"
+
+# Export configuration
+export:
+  # Default output directory for zone-specific exports
+  output_dir: "outputs/exports"
+  
+  # Auto-generate filenames (true) or require explicit output path (false)
+  auto_filename: true
+  
+  # Variables to export (leave empty for all available variables)
+  default_variables: []
+  
+  # Date range filtering (leave empty for full year)
+  date_range:
+    start_date: null  # Format: "MM/DD" (e.g., "01/01")
+    end_date: null    # Format: "MM/DD" (e.g., "12/31")
+
+# Pivot configuration
+pivot:
+  # Default output directory for consolidated data
+  output_dir: "outputs/pivots"
+  
+  # Auto-generate filenames (true) or require explicit output path (false)
+  auto_filename: true
+  
+  # Default variables to pivot (leave empty to require explicit variable)
+  default_variables: []
+  
+  # Default year to add to Date/Time column (null = no year)
+  default_year: null
+  
+  # Default simulation name (null = no simulation column)
+  default_simulation: null
+
+# Power BI export configuration
+powerbi:
+  # Default output directory for Power BI exports
+  output_dir: "outputs/powerbi"
+  
+  # Auto-generate filenames (true) or require explicit output path (false)
+  auto_filename: true
+  
+  # Default indicators to export (leave empty for all)
+  # Valid: IOD, AWD, ALPHA, HI, DDH, DI, DIlevel, HIlevel
+  default_indicators: []
+  
+  # Default year for datetime parsing
+  default_year: 2020
+  
+  # Default comfort parameters
+  comfort_temp: 26.5  # °C
+  base_temp: 18.0     # °C
+
+# Indicators configuration
+indicators:
+  # Mapeo de columnas de EnergyPlus para cálculo de indicadores
+  # {zone} será reemplazado por el nombre real de la zona
+  
+  # Variables por zona (zone-specific variables)
+  zone_variables:
+    # Temperatura operativa (calculada por EnergyPlus - PREFERIDA)
+    operative_temperature:
+      column_pattern: "{zone}:Zone Operative Temperature [C](Hourly:ON)"
+      required: true
+      description: "Operative temperature (preferred from EnergyPlus calculation)"
+    
+    # Temperatura del aire
+    air_temperature:
+      column_pattern: "{zone}:Zone Mean Air Temperature [C](Hourly:ON)"
+      required: true
+      description: "Zone mean air temperature"
+    
+    # Temperatura radiante media
+    mean_radiant_temperature:
+      column_pattern: "{zone}:Zone Mean Radiant Temperature [C](Hourly)"
+      required: false
+      description: "Zone mean radiant temperature (for fallback operative temp calculation)"
+    
+    # Humedad relativa
+    relative_humidity:
+      column_pattern: "{zone}:Zone Air Relative Humidity [%](Hourly:ON)"
+      fallback:
+        - "{zone}:Zone Air Relative Humidity [%](Hourly)"
+      required: true
+      description: "Zone relative humidity"
+    
+    # Ocupación (usar sensible heat rate como proxy)
+    occupancy:
+      column_pattern: "{zone}:Zone People Sensible Heating Rate [W](Hourly)"
+      conversion_factor: 0.01  # 100W por persona
+      default_value: 0
+      required: false
+      description: "Occupancy from people sensible heating rate"
+  
+  # Variables ambientales (environmental variables - no dependen de zona)
+  environmental_variables:
+    outdoor_temperature:
+      column_pattern: "Environment:Site Outdoor Air Drybulb Temperature [C](Hourly)"
+      required: true
+      description: "Outdoor dry bulb temperature"
+    
+    outdoor_dewpoint:
+      column_pattern: "Environment:Site Outdoor Air Dewpoint Temperature [C](Hourly)"
+      required: true
+      description: "Outdoor dewpoint temperature"
+    
+    outdoor_relative_humidity:
+      column_pattern: "Environment:Site Outdoor Air Relative Humidity [%](Hourly)"
+      required: false
+      default_value: 50.0
+      description: "Outdoor relative humidity (optional)"
+  
+  # Configuración de cálculos
+  calculations:
+    # Si operative_temperature no existe, calcular como (Tair + Tmrt) / 2
+    calculate_operative_if_missing: true
+    
+    # Conversión de heating rate a número de personas
+    occupancy_watts_per_person: 100.0
+    
+    # Valores por defecto cuando faltan datos
+    defaults:
+      occupancy: 0
+      relative_humidity: 50.0
+

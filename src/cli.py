@@ -17,6 +17,7 @@ from .csv_exporter import CSVExporter
 from .column_explorer import ColumnExplorer
 from .indicators import ThermalIndicators
 from .csv_pivot import CSVPivot
+from .powerbi_exporter import PowerBIExporter
 
 
 @click.group()
@@ -226,6 +227,108 @@ def status():
         raise click.Abort()
 
 
+@cli.command(name='config-show')
+@click.option('--zones', is_flag=True, help='Show zone groups configuration')
+@click.option('--export-cfg', is_flag=True, help='Show export configuration')
+@click.option('--pivot-cfg', is_flag=True, help='Show pivot configuration')
+@click.option('--all', 'show_all', is_flag=True, help='Show all configuration')
+def config_show(zones, export_cfg, pivot_cfg, show_all):
+    """
+    Show configuration settings from config/settings.yaml.
+    
+    Examples:
+    
+    \b
+    # Show zone groups
+    energyplus-sim config-show --zones
+    
+    \b
+    # Show export configuration
+    energyplus-sim config-show --export-cfg
+    
+    \b
+    # Show all configuration
+    energyplus-sim config-show --all
+    """
+    logger = logging.getLogger("climametrics.cli")
+    
+    try:
+        # If no options, show all
+        if not any([zones, export_cfg, pivot_cfg, show_all]):
+            show_all = True
+        
+        click.echo("=== ClimaMetrics Configuration ===\n")
+        
+        # Zone configuration
+        if zones or show_all:
+            click.echo("📍 Zone Configuration:")
+            click.echo("-" * 50)
+            
+            default_zones = config.get_default_zones()
+            if default_zones:
+                click.echo(f"Default zones: {', '.join(default_zones)}")
+            else:
+                click.echo("Default zones: (none)")
+            
+            zone_groups = config.get_zone_groups()
+            if zone_groups:
+                click.echo(f"\nZone groups ({len(zone_groups)} groups):")
+                for group_name, group_zones in zone_groups.items():
+                    click.echo(f"  • {group_name}:")
+                    for zone in group_zones:
+                        click.echo(f"      - {zone}")
+            else:
+                click.echo("\nZone groups: (none)")
+            click.echo()
+        
+        # Export configuration
+        if export_cfg or show_all:
+            click.echo("📤 Export Configuration:")
+            click.echo("-" * 50)
+            click.echo(f"Output directory: {config.get_export_output_dir()}")
+            click.echo(f"Auto-generate filenames: {config.get_export_auto_filename()}")
+            
+            default_vars = config.get_export_default_variables()
+            if default_vars:
+                click.echo(f"Default variables: {', '.join(default_vars)}")
+            else:
+                click.echo("Default variables: (none)")
+            
+            date_range = config.get_export_date_range()
+            if date_range.get('start_date') or date_range.get('end_date'):
+                click.echo(f"Date range: {date_range.get('start_date', 'N/A')} to {date_range.get('end_date', 'N/A')}")
+            else:
+                click.echo("Date range: (full year)")
+            click.echo()
+        
+        # Pivot configuration
+        if pivot_cfg or show_all:
+            click.echo("🔄 Pivot Configuration:")
+            click.echo("-" * 50)
+            click.echo(f"Output directory: {config.get_pivot_output_dir()}")
+            click.echo(f"Auto-generate filenames: {config.get_pivot_auto_filename()}")
+            
+            default_vars = config.get_pivot_default_variables()
+            if default_vars:
+                click.echo(f"Default variables: {', '.join(default_vars)}")
+            else:
+                click.echo("Default variables: (none)")
+            
+            default_year = config.get_pivot_default_year()
+            click.echo(f"Default year: {default_year if default_year else '(none)'}")
+            
+            default_sim = config.get_pivot_default_simulation()
+            click.echo(f"Default simulation: {default_sim if default_sim else '(none)'}")
+            click.echo()
+        
+        click.echo("💡 Tip: Edit config/settings.yaml to customize these settings")
+        
+    except Exception as e:
+        logger.error(f"Error showing configuration: {e}")
+        click.echo(f"Error: {e}")
+        raise click.Abort()
+
+
 @cli.command()
 @click.argument('idf_file', type=click.Path(exists=True, path_type=Path))
 @click.option('--building', is_flag=True, help='Show building information')
@@ -304,14 +407,18 @@ def analyze(idf_file, building, zones, materials, hvac, show_all, output_format,
 @click.option('--output', '-o', type=click.Path(path_type=Path), 
               help='Output CSV file path (default: auto-generated in outputs/exports/)')
 @click.option('--zones', help='Comma-separated list of zones to include (default: all zones)')
+@click.option('--zone-group', '-g', help='Use predefined zone group from config (e.g., "studyrooms", "all_plant1")')
 @click.option('--start-date', help='Start date filter (YYYY-MM-DD format)')
 @click.option('--end-date', help='End date filter (YYYY-MM-DD format)')
 @click.option('--summary', is_flag=True, help='Show data summary before export')
-def export(csv_file, output, zones, start_date, end_date, summary):
+def export(csv_file, output, zones, zone_group, start_date, end_date, summary):
     """Export thermal data from EnergyPlus CSV to unified format."""
     logger = logging.getLogger("climametrics.cli")
     
     try:
+        # Load configuration
+        from .config import config
+        
         # Initialize exporter
         exporter = CSVExporter(csv_file)
         
@@ -330,9 +437,28 @@ def export(csv_file, output, zones, start_date, end_date, summary):
         
         # Parse zones filter
         zone_list = None
+        
+        # Priority: --zones > --zone-group > default_zones from config
         if zones:
             zone_list = [zone.strip() for zone in zones.split(',')]
             click.echo(f"Filtering to zones: {zone_list}")
+        elif zone_group:
+            # Get zone group from configuration
+            zone_list = config.get_zone_group(zone_group)
+            if zone_list:
+                click.echo(f"Using zone group '{zone_group}': {zone_list}")
+            else:
+                available_groups = list(config.get_zone_groups().keys())
+                click.echo(f"Error: Zone group '{zone_group}' not found in configuration.")
+                if available_groups:
+                    click.echo(f"Available zone groups: {', '.join(available_groups)}")
+                raise click.Abort()
+        else:
+            # Use default zones from config if set
+            default_zones = config.get_default_zones()
+            if default_zones:
+                zone_list = default_zones
+                click.echo(f"Using default zones from config: {zone_list}")
         
         # Auto-generate output file name if not provided
         if not output:
@@ -471,11 +597,13 @@ def columns(csv_file, zone, pattern, limit, format_type, zones, types, search):
 
 
 @cli.command()
-@click.argument('csv_file', type=click.Path(exists=True, path_type=Path))
-@click.option('--output', '-o', type=click.Path(path_type=Path), 
-              help='Output CSV file path (default: input_file_indicators.csv)')
+@click.argument('energyplus_csv', type=click.Path(exists=True, path_type=Path))
+@click.option('--zones', help='Comma-separated list of zones to analyze')
+@click.option('--zone-group', '-g', help='Use predefined zone group from config (e.g., "studyrooms", "all_plant1")')
+@click.option('--output-dir', '-o', type=click.Path(path_type=Path), 
+              help='Output directory for indicator files (default: outputs/indicators/{simulation_name}/)')
 @click.option('--simulation', '-s', default='Simulation', 
-              help='Simulation name for output (default: "Simulation")')
+              help='Simulation name for output files (default: "Simulation")')
 @click.option('--indicators', '-i', help='Comma-separated list of indicators to calculate (IOD,AWD,ALPHA,HI,DDH,DI,DIlevel,HIlevel)')
 @click.option('--comfort-temp', type=float, default=26.5, 
               help='Comfort temperature for IOD calculation (default: 26.5°C)')
@@ -483,45 +611,84 @@ def columns(csv_file, zone, pattern, limit, format_type, zones, types, search):
               help='Base outside temperature for AWD calculation (default: 18.0°C)')
 @click.option('--year', '-y', type=int, default=2020, 
               help='Year for datetime parsing (default: 2020)')
-def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp, year):
+def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indicators, comfort_temp, base_temp, year):
     """
-    Calculate thermal comfort indicators from exported thermal data.
+    Calculate thermal comfort indicators directly from EnergyPlus CSV output.
     
-    This command calculates various thermal comfort indicators including:
+    This command reads the EnergyPlus output CSV file and calculates thermal comfort 
+    indicators for specified zones. Each indicator is exported to a separate CSV file
+    in WIDE format (DateTime as rows, zones as columns).
+    
+    Available indicators:
     - IOD: Indoor Overheating Degree
-    - AWD: Ambient Warmness Degree  
-    - ALPHA: Overheating Escalator Factor
+    - AWD: Ambient Warmness Degree (environmental, no zones)
+    - ALPHA: Overheating Escalator Factor (IOD/AWD)
     - HI: Heat Index (Apparent Temperature)
     - DDH: Degree-weighted Discomfort Hours
     - DI: Discomfort Index
     - DIlevel: Discomfort Index Risk Categories
     - HIlevel: Heat Index Risk Categories
     
-    The output format is: DateTime,Zone,Value,Simulation,Indicator
+    Output files: {Indicator}_{SimulationName}.csv
     
     Examples:
     
     \b
-    # Calculate all indicators
-    energyplus-sim indicators thermal_data.csv --simulation "Baseline_TMY2020s"
+    # Calculate all indicators for zone group
+    energyplus-sim indicators outputs/results/simulation.csv \\
+        --zone-group studyrooms \\
+        --simulation "Baseline_TMY2020s"
     
     \b
-    # Calculate specific indicators
-    energyplus-sim indicators thermal_data.csv --indicators "IOD,AWD,HI"
-    
-    # Calculate indicators with risk levels
-    energyplus-sim indicators thermal_data.csv --indicators "HI,DI,HIlevel,DIlevel"
+    # Calculate specific indicators for custom zones
+    energyplus-sim indicators outputs/results/simulation.csv \\
+        --zones "ZONE1,ZONE2" \\
+        --indicators "IOD,AWD,HI" \\
+        --simulation "Baseline_2020s"
     
     \b
-    # Custom comfort temperature
-    energyplus-sim indicators thermal_data.csv --comfort-temp 25.0
-    
-    # Custom year for datetime parsing
-    energyplus-sim indicators thermal_data.csv --year 2024
+    # Custom output directory and parameters
+    energyplus-sim indicators outputs/results/simulation.csv \\
+        --zone-group studyrooms \\
+        --output-dir "custom/path/" \\
+        --comfort-temp 25.0 \\
+        --year 2025
     """
     logger = logging.getLogger("climametrics.cli")
     
     try:
+        # Load configuration
+        from .config import config
+        
+        # Determine zones to analyze
+        zone_list = None
+        
+        # Priority: --zones > --zone-group > default_zones from config
+        if zones:
+            zone_list = [z.strip() for z in zones.split(',')]
+            click.echo(f"Analyzing zones: {zone_list}")
+        elif zone_group:
+            zone_list = config.get_zone_group(zone_group)
+            if zone_list:
+                click.echo(f"Using zone group '{zone_group}': {zone_list}")
+            else:
+                available_groups = list(config.get_zone_groups().keys())
+                click.echo(f"Error: Zone group '{zone_group}' not found in configuration.")
+                if available_groups:
+                    click.echo(f"Available zone groups: {', '.join(available_groups)}")
+                else:
+                    click.echo("No zone groups defined in config/settings.yaml")
+                raise click.Abort()
+        else:
+            default_zones = config.get_default_zones()
+            if default_zones:
+                zone_list = default_zones
+                click.echo(f"Using default zones from config: {zone_list}")
+            else:
+                click.echo("Error: No zones specified.")
+                click.echo("Use --zones, --zone-group, or set default_zones in config/settings.yaml")
+                raise click.Abort()
+        
         # Parse indicators list
         indicators_list = None
         if indicators:
@@ -539,13 +706,13 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
             click.echo(f"Error: Year must be between 1900 and 2100, got {year}")
             return
         
-        # Set default output file
-        if not output:
-            input_stem = Path(csv_file).stem
-            output = Path(f"{input_stem}_indicators.csv")
+        # Set default output directory
+        if not output_dir:
+            output_dir = Path('outputs') / 'indicators' / simulation
+            click.echo(f"Using default output directory: {output_dir}")
         
         # Initialize indicators calculator
-        calculator = ThermalIndicators(csv_file, simulation, year)
+        calculator = ThermalIndicators(energyplus_csv, simulation, year)
         
         # Update constants if provided
         if comfort_temp != 26.5:
@@ -556,25 +723,204 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
             calculator.BASE_OUTSIDE_TEMPERATURE = base_temp
             click.echo(f"Using base temperature: {base_temp}°C")
         
-        # Calculate indicators
-        click.echo(f"Calculating thermal comfort indicators...")
-        click.echo(f"  Input file: {csv_file}")
-        click.echo(f"  Output file: {output}")
+        # Display operation info
+        click.echo(f"\nCalculating thermal comfort indicators...")
+        click.echo(f"  EnergyPlus CSV: {energyplus_csv}")
+        click.echo(f"  Zones: {len(zone_list)} zones")
+        click.echo(f"  Output directory: {output_dir}")
         click.echo(f"  Simulation: {simulation}")
         click.echo(f"  Year: {year}")
         if indicators_list:
             click.echo(f"  Indicators: {', '.join(indicators_list)}")
         else:
             click.echo(f"  Indicators: All (IOD, AWD, ALPHA, HI, DDH, DI, DIlevel, HIlevel)")
+        click.echo()
         
-        # Export indicators
-        calculator.export_indicators(output, indicators_list)
+        # Calculate and export indicators
+        calculator.export_indicators_wide(
+            output_dir=output_dir,
+            zones=zone_list,
+            indicators=indicators_list
+        )
         
-        click.echo("Indicators calculation completed successfully!")
+        click.echo(f"\n✅ Indicators calculation completed successfully!")
+        click.echo(f"📁 Output files saved in: {output_dir}")
         
     except Exception as e:
         logger.error(f"Error calculating indicators: {e}")
-        click.echo(f"Error: {e}")
+        click.echo(f"❌ Error: {e}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.argument('energyplus_csv', type=click.Path(exists=True, path_type=Path))
+@click.option('--zones', '-z', type=str,
+              help='Comma-separated list of zone names to analyze')
+@click.option('--zone-group', '-g', type=str,
+              help='Zone group name from settings.yaml (alternative to --zones)')
+@click.option('--output', '-o', type=click.Path(path_type=Path),
+              help='Output CSV file path (default: outputs/powerbi/{simulation}_powerbi.csv)')
+@click.option('--simulation', '-s', type=str, required=True,
+              help='Simulation name (required, used in output)')
+@click.option('--indicators', '-i', type=str,
+              help='Comma-separated list of indicators to calculate (default: all)')
+@click.option('--comfort-temp', type=float, default=26.5,
+              help='Comfort temperature for IOD calculation (default: 26.5°C)')
+@click.option('--base-temp', type=float, default=18.0,
+              help='Base outside temperature for AWD calculation (default: 18.0°C)')
+@click.option('--year', '-y', type=int, default=2020,
+              help='Year for datetime parsing (default: 2020)')
+@click.option('--start-date', type=str,
+              help='Start date for filtering in format MM/DD (e.g., "06/22")')
+@click.option('--end-date', type=str,
+              help='End date for filtering in format MM/DD (e.g., "08/30")')
+def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, comfort_temp, base_temp, year, start_date, end_date):
+    """
+    Export thermal comfort indicators in Power BI format (ULTRA-LONG).
+    
+    This command calculates thermal comfort indicators and exports them in a single
+    consolidated CSV file optimized for Power BI analysis. The output uses ULTRA-LONG
+    format with columns: Simulation, Indicator, DateTime, Zone, Value.
+    
+    Features:
+    - Single consolidated CSV with all indicators
+    - Temporal indicators: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
+    - Aggregated indicators: DDH (sum across time), alphatot (global average)
+    - Environmental indicator: AWD (Zone = "Environment")
+    - Optimized for Power BI data modeling and DAX calculations
+    
+    Available indicators:
+    - IOD: Indoor Overheating Degree (temporal)
+    - AWD: Ambient Warmness Degree (temporal, environmental)
+    - ALPHA: Overheating Escalator Factor (temporal, by zone)
+    - alphatot: Global ALPHA average (single aggregated value)
+    - HI: Heat Index (temporal)
+    - HIlevel: Heat Index Risk Categories (temporal)
+    - DDH: Degree-weighted Discomfort Hours (aggregated sum)
+    - DI: Discomfort Index (temporal)
+    - DIlevel: Discomfort Index Risk Categories (temporal)
+    
+    Examples:
+    
+    \b
+    # Export all indicators for zone group
+    energyplus-sim powerbi outputs/results/simulation.csv \\
+        --zone-group studyrooms \\
+        --simulation "Baseline_TMY2020s"
+    
+    \b
+    # Export specific indicators with custom output
+    energyplus-sim powerbi outputs/results/simulation.csv \\
+        --zones "ZONE1,ZONE2,ZONE3" \\
+        --indicators "IOD,AWD,ALPHA,DDH" \\
+        --simulation "Future_2050s" \\
+        --output outputs/powerbi/future_scenario.csv
+    
+    \b
+    # Customize comfort parameters
+    energyplus-sim powerbi outputs/results/simulation.csv \\
+        --zone-group all \\
+        --simulation "Test_Run" \\
+        --comfort-temp 25.0 \\
+        --base-temp 19.0 \\
+        --year 2025
+    
+    \b
+    # Filter by date range (summer period)
+    energyplus-sim powerbi outputs/results/simulation.csv \\
+        --zone-group studyrooms \\
+        --simulation "Baseline_Summer_2020s" \\
+        --start-date "06/22" \\
+        --end-date "08/30" \\
+        --year 2020
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Determine zones to analyze
+        if zones and zone_group:
+            click.echo("Warning: Both --zones and --zone-group provided. Using --zones.")
+            zone_list = [z.strip() for z in zones.split(',')]
+        elif zones:
+            zone_list = [z.strip() for z in zones.split(',')]
+        elif zone_group:
+            zone_list = config.get_zone_group(zone_group)
+            if not zone_list:
+                raise click.ClickException(f"Zone group '{zone_group}' not found in settings.yaml")
+            click.echo(f"Using zone group '{zone_group}': {len(zone_list)} zones")
+        else:
+            # Try default zones
+            zone_list = config.get_default_zones()
+            if not zone_list:
+                raise click.ClickException(
+                    "No zones specified. Use --zones, --zone-group, or configure default_zones in settings.yaml"
+                )
+            click.echo(f"Using default zones: {len(zone_list)} zones")
+        
+        # Parse indicators if provided
+        indicators_list = None
+        if indicators:
+            indicators_list = [i.strip().upper() for i in indicators.split(',')]
+            # Validate indicators
+            valid_indicators = ['IOD', 'AWD', 'ALPHA', 'HI', 'DDH', 'DI', 'DILEVEL', 'HILEVEL']
+            for ind in indicators_list:
+                if ind not in valid_indicators:
+                    raise click.ClickException(
+                        f"Invalid indicator: {ind}. Valid options: {', '.join(valid_indicators)}"
+                    )
+        
+        # Display operation info
+        click.echo(f"\n🔄 Exporting Power BI format...")
+        click.echo(f"  EnergyPlus CSV: {energyplus_csv}")
+        click.echo(f"  Zones: {len(zone_list)} zones")
+        click.echo(f"  Simulation: {simulation}")
+        click.echo(f"  Year: {year}")
+        if start_date or end_date:
+            date_range_str = ""
+            if start_date and end_date:
+                date_range_str = f"{start_date} to {end_date}"
+            elif start_date:
+                date_range_str = f"from {start_date}"
+            elif end_date:
+                date_range_str = f"to {end_date}"
+            click.echo(f"  Date range: {date_range_str}")
+        click.echo(f"  Comfort temp: {comfort_temp}°C")
+        click.echo(f"  Base temp: {base_temp}°C")
+        if indicators_list:
+            click.echo(f"  Indicators: {', '.join(indicators_list)}")
+        else:
+            click.echo(f"  Indicators: All (IOD, AWD, ALPHA, alphatot, HI, DDH, DI, DIlevel, HIlevel)")
+        if output:
+            click.echo(f"  Output: {output}")
+        else:
+            click.echo(f"  Output: outputs/powerbi/{simulation}_powerbi.csv")
+        click.echo()
+        
+        # Initialize exporter
+        exporter = PowerBIExporter(
+            energyplus_csv=str(energyplus_csv),
+            simulation_name=simulation
+        )
+        
+        # Export
+        output_file = exporter.export_powerbi(
+            zones=zone_list,
+            output_file=str(output) if output else None,
+            indicators=indicators_list,
+            comfort_temp=comfort_temp,
+            base_temp=base_temp,
+            year=year,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        click.echo(f"\n✅ Power BI export completed successfully!")
+        click.echo(f"📁 Output file: {output_file}")
+        click.echo(f"\n💡 Import this file into Power BI for advanced analysis and dashboards!")
+        
+    except Exception as e:
+        logger.error(f"Error exporting Power BI format: {e}")
+        click.echo(f"❌ Error: {e}")
         raise click.Abort()
 
 
@@ -583,7 +929,7 @@ def indicators(csv_file, output, simulation, indicators, comfort_temp, base_temp
               help='Directory containing exported CSV files (default: outputs/exports/)')
 @click.option('--input', 'pattern', type=str,
               help='Glob pattern for input files (e.g., "outputs/exports/*STUDYROOM*.csv")')
-@click.option('--variable', '-v', required=True,
+@click.option('--variable', '-v',
               help='Variable(s) to extract (e.g., "Operative_Temperature" or "Operative_Temperature,Air_Temperature")')
 @click.option('--year', '-y', type=int,
               help='Year to add to Date/Time column (e.g., 2020, 2025)')
@@ -638,11 +984,37 @@ def pivot(directory, pattern, variable, year, simulation, output, summary):
     logger = logging.getLogger("climametrics.cli")
     
     try:
+        # Load configuration
+        from .config import config
+        
         # Initialize pivot
         pivot_tool = CSVPivot()
         
+        # Use defaults from config if not provided
+        if not variable:
+            default_vars = config.get_pivot_default_variables()
+            if default_vars:
+                variable = ','.join(default_vars)
+                click.echo(f"Using default variables from config: {variable}")
+            else:
+                click.echo("Error: No variable specified and no default variables in config.")
+                click.echo("Use --variable or set pivot.default_variables in config/settings.yaml")
+                raise click.Abort()
+        
+        if not year:
+            year = config.get_pivot_default_year()
+            if year:
+                click.echo(f"Using default year from config: {year}")
+        
+        if not simulation:
+            simulation = config.get_pivot_default_simulation()
+            if simulation:
+                click.echo(f"Using default simulation from config: {simulation}")
+        
         # Set default directory if neither dir nor pattern provided
         if not directory and not pattern:
+            directory = config.get_pivot_output_dir()
+            # Use outputs/exports as source directory
             directory = Path('outputs/exports')
             click.echo(f"Using default directory: {directory}")
         
@@ -650,10 +1022,14 @@ def pivot(directory, pattern, variable, year, simulation, output, summary):
         if not output:
             # Clean variable name for filename
             var_name = variable.replace('_', '').replace(' ', '')
-            output = Path(f'outputs/pivots/{variable}_All_Zones.csv')
+            output = config.get_pivot_output_dir() / f'{variable}_All_Zones.csv'
         
         # Display operation info
         click.echo(f"Variable to extract: {variable}")
+        if year:
+            click.echo(f"Year: {year}")
+        if simulation:
+            click.echo(f"Simulation: {simulation}")
         if directory:
             click.echo(f"Processing CSV files from: {directory}")
         else:

@@ -119,6 +119,44 @@ class PowerBIExporter:
         
         return df_alphatot
     
+    def _export_final_dataframe(self, df: pd.DataFrame, output_path: Path, export_format: str) -> Path:
+        """
+        Export final DataFrame to specified format (CSV or XLSX).
+        
+        Args:
+            df: DataFrame to export
+            output_path: Output file path (without extension)
+            export_format: Export format ('csv' or 'xlsx')
+            
+        Returns:
+            Path: Final output file path with appropriate extension
+            
+        Raises:
+            ImportError: If xlsx format is requested but openpyxl is not installed
+        """
+        if export_format == 'xlsx':
+            # Check if openpyxl is available
+            try:
+                import openpyxl
+            except ImportError:
+                self.logger.error("openpyxl library not installed")
+                raise ImportError(
+                    "Excel export requires openpyxl library. "
+                    "Install with: pip install openpyxl"
+                )
+            
+            # Export to Excel
+            output_path = output_path.with_suffix('.xlsx')
+            df.to_excel(output_path, engine='openpyxl', index=False)
+            self.logger.debug(f"Exported to Excel: {output_path}")
+        else:  # csv (default)
+            # Export to CSV
+            output_path = output_path.with_suffix('.csv')
+            df.to_csv(output_path, index=False)
+            self.logger.debug(f"Exported to CSV: {output_path}")
+        
+        return output_path
+    
     def _aggregate_ddh(self, df_ddh: pd.DataFrame) -> pd.DataFrame:
         """
         Aggregate DDH by summing across all time periods.
@@ -221,23 +259,25 @@ class PowerBIExporter:
         base_temp: float = 18.0,
         year: Optional[int] = None,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
+        export_format: str = 'csv'
     ) -> str:
         """
         Export all indicators in Power BI format (ULTRA-LONG).
         
         Args:
             zones: List of zone names to analyze
-            output_file: Output CSV file path (optional)
+            output_file: Output file path (optional, extension will be added based on format)
             indicators: List of indicators to calculate (default: all)
             comfort_temp: Comfort temperature for IOD (default: 26.5°C)
             base_temp: Base temperature for AWD (default: 18°C)
             year: Year to add to DateTime (optional)
             start_date: Start date for filtering in format "MM/DD" (e.g., "06/22")
             end_date: End date for filtering in format "MM/DD" (e.g., "08/30")
+            export_format: Export format - 'csv' (default) or 'xlsx'
             
         Returns:
-            Path to the generated CSV file
+            Path to the generated file
         """
         if indicators is None:
             indicators = ['IOD', 'AWD', 'ALPHA', 'HI', 'DDH', 'DI', 'DIlevel', 'HIlevel']
@@ -356,14 +396,18 @@ class PowerBIExporter:
         
         # Generate output file name if not provided
         if output_file is None:
-            output_file = f"outputs/powerbi/{self.simulation_name}_powerbi.csv"
+            output_file = f"outputs/powerbi/{self.simulation_name}_powerbi"
+        
+        # Remove extension if provided (will be added by _export_final_dataframe)
+        output_path = Path(output_file)
+        if output_path.suffix:
+            output_path = output_path.with_suffix('')
         
         # Ensure output directory exists
-        output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Export to CSV
-        df_final.to_csv(output_path, index=False)
+        # Export to specified format
+        output_path = self._export_final_dataframe(df_final, output_path, export_format)
         
         # Log summary
         total_rows = len(df_final)

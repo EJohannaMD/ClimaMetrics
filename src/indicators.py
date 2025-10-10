@@ -452,9 +452,9 @@ class ThermalIndicators:
             alpha_wide[zone] = np.where(
                 (awd_aligned['Environment'] != 0) & (awd_aligned['Environment'].notna()),
                 alpha_wide[zone] / awd_aligned['Environment'],
-                np.nan
-            )
-        
+            np.nan
+        )
+
         return alpha_wide
 
     def calculate_heat_index_category(self, hi_celsius: float) -> str:
@@ -731,19 +731,59 @@ class ThermalIndicators:
         
         return ddh_wide
     
+    def _export_dataframe(self, df: pd.DataFrame, output_path: Path, export_format: str) -> Path:
+        """
+        Export DataFrame to specified format (CSV or XLSX).
+        
+        Args:
+            df: DataFrame to export
+            output_path: Output file path (without extension)
+            export_format: Export format ('csv' or 'xlsx')
+            
+        Returns:
+            Path: Final output file path with appropriate extension
+            
+        Raises:
+            ImportError: If xlsx format is requested but openpyxl is not installed
+        """
+        if export_format == 'xlsx':
+            # Check if openpyxl is available
+            try:
+                import openpyxl
+            except ImportError:
+                self.logger.error("openpyxl library not installed")
+                raise ImportError(
+                    "Excel export requires openpyxl library. "
+                    "Install with: pip install openpyxl"
+                )
+            
+            # Export to Excel
+            output_path = output_path.with_suffix('.xlsx')
+            df.to_excel(output_path, engine='openpyxl')
+            self.logger.debug(f"Exported to Excel: {output_path}")
+        else:  # csv (default)
+            # Export to CSV
+            output_path = output_path.with_suffix('.csv')
+            df.to_csv(output_path)
+            self.logger.debug(f"Exported to CSV: {output_path}")
+        
+        return output_path
+    
     def export_indicators_wide(
         self,
         output_dir: Path,
         zones: List[str],
-        indicators: Optional[List[str]] = None
+        indicators: Optional[List[str]] = None,
+        export_format: str = 'csv'
     ) -> None:
         """
         Calculate and export thermal comfort indicators in WIDE format.
         
         Args:
-            output_dir: Output directory for indicator CSV files
+            output_dir: Output directory for indicator files
             zones: List of zone names to analyze
             indicators: List of indicators to calculate. If None, calculates all.
+            export_format: Export format - 'csv' (default) or 'xlsx'
         """
         if indicators is None:
             indicators = ['IOD', 'AWD', 'ALPHA', 'HI', 'DDH', 'DI', 'DIlevel', 'HIlevel']
@@ -764,15 +804,15 @@ class ThermalIndicators:
         # IOD
         if 'IOD' in indicators:
             iod_wide = self.calculate_indoor_overheating_degree(df.copy())
-            output_file = output_dir / f"IOD_{self.simulation_name}.csv"
-            iod_wide.to_csv(output_file)
+            output_file = output_dir / f"IOD_{self.simulation_name}"
+            output_file = self._export_dataframe(iod_wide, output_file, export_format)
             self.logger.info(f"Exported IOD to: {output_file}")
         
         # AWD
         if 'AWD' in indicators:
             awd_wide = self.calculate_ambient_warmness_degree(df.copy())
-            output_file = output_dir / f"AWD_{self.simulation_name}.csv"
-            awd_wide.to_csv(output_file)
+            output_file = output_dir / f"AWD_{self.simulation_name}"
+            output_file = self._export_dataframe(awd_wide, output_file, export_format)
             self.logger.info(f"Exported AWD to: {output_file}")
         
         # ALPHA (requires IOD and AWD)
@@ -783,43 +823,43 @@ class ThermalIndicators:
                 awd_wide = self.calculate_ambient_warmness_degree(df.copy())
             
             alpha_wide = self.calculate_alpha(iod_wide, awd_wide)
-            output_file = output_dir / f"ALPHA_{self.simulation_name}.csv"
-            alpha_wide.to_csv(output_file)
+            output_file = output_dir / f"ALPHA_{self.simulation_name}"
+            output_file = self._export_dataframe(alpha_wide, output_file, export_format)
             self.logger.info(f"Exported ALPHA to: {output_file}")
         
         # HI
         if 'HI' in indicators:
             hi_wide = self.calculate_heat_index(df.copy())
-            output_file = output_dir / f"HI_{self.simulation_name}.csv"
-            hi_wide.to_csv(output_file)
+            output_file = output_dir / f"HI_{self.simulation_name}"
+            output_file = self._export_dataframe(hi_wide, output_file, export_format)
             self.logger.info(f"Exported HI to: {output_file}")
         
         # HIlevel
         if 'HIlevel' in indicators:
             hilevel_wide = self.calculate_heat_index_levels(df.copy())
-            output_file = output_dir / f"HIlevel_{self.simulation_name}.csv"
-            hilevel_wide.to_csv(output_file)
+            output_file = output_dir / f"HIlevel_{self.simulation_name}"
+            output_file = self._export_dataframe(hilevel_wide, output_file, export_format)
             self.logger.info(f"Exported HIlevel to: {output_file}")
         
         # DDH
         if 'DDH' in indicators:
             ddh_wide = self.calculate_degree_weighted_discomfort_hours(df.copy())
-            output_file = output_dir / f"DDH_{self.simulation_name}.csv"
-            ddh_wide.to_csv(output_file)
+            output_file = output_dir / f"DDH_{self.simulation_name}"
+            output_file = self._export_dataframe(ddh_wide, output_file, export_format)
             self.logger.info(f"Exported DDH to: {output_file}")
         
         # DI
         if 'DI' in indicators:
             di_wide = self.calculate_discomfort_index(df.copy())
-            output_file = output_dir / f"DI_{self.simulation_name}.csv"
-            di_wide.to_csv(output_file)
+            output_file = output_dir / f"DI_{self.simulation_name}"
+            output_file = self._export_dataframe(di_wide, output_file, export_format)
             self.logger.info(f"Exported DI to: {output_file}")
         
         # DIlevel
         if 'DIlevel' in indicators:
             dilevel_wide = self.calculate_discomfort_index_levels(df.copy())
-            output_file = output_dir / f"DIlevel_{self.simulation_name}.csv"
-            dilevel_wide.to_csv(output_file)
+            output_file = output_dir / f"DIlevel_{self.simulation_name}"
+            output_file = self._export_dataframe(dilevel_wide, output_file, export_format)
             self.logger.info(f"Exported DIlevel to: {output_file}")
         
         self.logger.info(f"Successfully exported {len(indicators)} indicators to: {output_dir}")

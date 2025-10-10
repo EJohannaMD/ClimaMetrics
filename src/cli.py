@@ -611,12 +611,16 @@ def columns(csv_file, zone, pattern, limit, format_type, zones, types, search):
               help='Base outside temperature for AWD calculation (default: 18.0°C)')
 @click.option('--year', '-y', type=int, default=2020, 
               help='Year for datetime parsing (default: 2020)')
-def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indicators, comfort_temp, base_temp, year):
+@click.option('--format', '-f', 
+              type=click.Choice(['csv', 'xlsx'], case_sensitive=False),
+              default='csv',
+              help='Export format: csv or xlsx (default: csv)')
+def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indicators, comfort_temp, base_temp, year, format):
     """
     Calculate thermal comfort indicators directly from EnergyPlus CSV output.
     
     This command reads the EnergyPlus output CSV file and calculates thermal comfort 
-    indicators for specified zones. Each indicator is exported to a separate CSV file
+    indicators for specified zones. Each indicator is exported to a separate file
     in WIDE format (DateTime as rows, zones as columns).
     
     Available indicators:
@@ -629,22 +633,25 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
     - DIlevel: Discomfort Index Risk Categories
     - HIlevel: Heat Index Risk Categories
     
-    Output files: {Indicator}_{SimulationName}.csv
+    Export formats:
+    - CSV (default): {Indicator}_{SimulationName}.csv
+    - XLSX: {Indicator}_{SimulationName}.xlsx (requires openpyxl)
     
     Examples:
     
     \b
-    # Calculate all indicators for zone group
+    # Calculate all indicators for zone group (CSV format)
     energyplus-sim indicators outputs/results/simulation.csv \\
         --zone-group studyrooms \\
         --simulation "Baseline_TMY2020s"
     
     \b
-    # Calculate specific indicators for custom zones
+    # Calculate specific indicators in Excel format
     energyplus-sim indicators outputs/results/simulation.csv \\
         --zones "ZONE1,ZONE2" \\
         --indicators "IOD,AWD,HI" \\
-        --simulation "Baseline_2020s"
+        --simulation "Baseline_2020s" \\
+        --format xlsx
     
     \b
     # Custom output directory and parameters
@@ -652,7 +659,8 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
         --zone-group studyrooms \\
         --output-dir "custom/path/" \\
         --comfort-temp 25.0 \\
-        --year 2025
+        --year 2025 \\
+        --format xlsx
     """
     logger = logging.getLogger("climametrics.cli")
     
@@ -730,6 +738,7 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
         click.echo(f"  Output directory: {output_dir}")
         click.echo(f"  Simulation: {simulation}")
         click.echo(f"  Year: {year}")
+        click.echo(f"  Format: {format.upper()}")
         if indicators_list:
             click.echo(f"  Indicators: {', '.join(indicators_list)}")
         else:
@@ -740,7 +749,8 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
         calculator.export_indicators_wide(
             output_dir=output_dir,
             zones=zone_list,
-            indicators=indicators_list
+            indicators=indicators_list,
+            export_format=format
         )
         
         click.echo(f"\n✅ Indicators calculation completed successfully!")
@@ -774,7 +784,11 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
               help='Start date for filtering in format MM/DD (e.g., "06/22")')
 @click.option('--end-date', type=str,
               help='End date for filtering in format MM/DD (e.g., "08/30")')
-def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, comfort_temp, base_temp, year, start_date, end_date):
+@click.option('--format', '-f', 
+              type=click.Choice(['csv', 'xlsx'], case_sensitive=False),
+              default='csv',
+              help='Export format: csv or xlsx (default: csv)')
+def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, comfort_temp, base_temp, year, start_date, end_date, format):
     """
     Export thermal comfort indicators in Power BI format (ULTRA-LONG).
     
@@ -783,11 +797,15 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
     format with columns: Simulation, Indicator, DateTime, Zone, Value.
     
     Features:
-    - Single consolidated CSV with all indicators
+    - Single consolidated file with all indicators (CSV or XLSX)
     - Temporal indicators: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
     - Aggregated indicators: DDH (sum across time), alphatot (global average)
     - Environmental indicator: AWD (Zone = "Environment")
     - Optimized for Power BI data modeling and DAX calculations
+    
+    Export formats:
+    - CSV (default): Optimized for large datasets
+    - XLSX: Excel format with compression (requires openpyxl)
     
     Available indicators:
     - IOD: Indoor Overheating Degree (temporal)
@@ -833,6 +851,13 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
         --start-date "06/22" \\
         --end-date "08/30" \\
         --year 2020
+    
+    \b
+    # Export in Excel format
+    energyplus-sim powerbi outputs/results/simulation.csv \\
+        --zone-group studyrooms \\
+        --simulation "Baseline_2020s" \\
+        --format xlsx
     """
     logger = logging.getLogger(__name__)
     
@@ -875,6 +900,7 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
         click.echo(f"  Zones: {len(zone_list)} zones")
         click.echo(f"  Simulation: {simulation}")
         click.echo(f"  Year: {year}")
+        click.echo(f"  Format: {format.upper()}")
         if start_date or end_date:
             date_range_str = ""
             if start_date and end_date:
@@ -893,7 +919,8 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
         if output:
             click.echo(f"  Output: {output}")
         else:
-            click.echo(f"  Output: outputs/powerbi/{simulation}_powerbi.csv")
+            ext = '.xlsx' if format == 'xlsx' else '.csv'
+            click.echo(f"  Output: outputs/powerbi/{simulation}_powerbi{ext}")
         click.echo()
         
         # Initialize exporter
@@ -911,7 +938,8 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
             base_temp=base_temp,
             year=year,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            export_format=format
         )
         
         click.echo(f"\n✅ Power BI export completed successfully!")

@@ -9,6 +9,8 @@ This document provides detailed mathematical formulas and explanations for all t
 ### Definition
 IOD quantifies the average excess indoor temperature above comfort level during occupied periods.
 
+**Important for Power BI Export:** IOD values are only exported for occupied hours. Non-occupied hours are excluded (NaN), ensuring the denominator only counts hours when the space is actually in use.
+
 ### Formula
 ```
 IOD = Σ(Top - Tcomf)⁺ / Σ(Occupied_hours)
@@ -45,12 +47,16 @@ IOD = sum(excess_temp) / sum(Occupied_hours)
 ## 2. AWD (Ambient Warmness Degree)
 
 ### Definition
-AWD quantifies the average excess ambient (outdoor) temperature above base temperature across all time periods.
+AWD quantifies the average excess ambient (outdoor) temperature above base temperature.
+
+**Important for Power BI Export:** AWD is calculated for **all 8,760 hours** of the year and exported as a single "Environment" column (not per zone). This provides complete climate data while ALPHA is pre-calculated using filtered AWD that matches IOD's occupied hours.
 
 ### Formula
 ```
 AWD = Σ(Tai - Tb)⁺ / N_total
 ```
+
+Where N_total = All hours (8,760 for a full year)
 
 ### Variables
 - **Tai** = Ambient (outdoor) air temperature (°C)
@@ -70,7 +76,7 @@ AWD = Σ(Tai - Tb)⁺ / N_total
 - **Example**: AWD = 5.2°C means the ambient is on average 5.2°C above base temperature
 
 ### Special Note
-AWD is exported with column name **"Environment"** instead of zone names, as it represents outdoor conditions.
+AWD is exported with **all 8,760 hours** as a single "Environment" variable, representing complete outdoor climate conditions throughout the year. ALPHA is pre-calculated internally using AWD filtered to match IOD's occupied hours, ensuring a fair comparison while preserving full climate data for analysis.
 
 ---
 
@@ -79,14 +85,18 @@ AWD is exported with column name **"Environment"** instead of zone names, as it 
 ### Definition
 ALPHA represents the ratio of indoor to ambient overheating, indicating building thermal performance relative to outdoor conditions.
 
+**Important:** ALPHA is pre-calculated using IOD (filtered by occupancy) divided by AWD (filtered to match IOD's occupied hours). The result is exported directly, ensuring a fair comparison with matching denominators. In Power BI, you can analyze ALPHA directly without needing to recalculate it.
+
 ### Formula
 ```
 ALPHA = IOD / AWD
 ```
 
+Where both IOD and AWD are calculated only for occupied hours of each zone.
+
 ### Variables
-- **IOD** = Indoor Overheating Degree (°C)
-- **AWD** = Ambient Warmness Degree (°C)
+- **IOD** = Indoor Overheating Degree (°C) - occupied hours only
+- **AWD** = Ambient Warmness Degree (°C) - filtered to match IOD's occupied hours for calculation
 
 ### Unit
 Dimensionless ratio

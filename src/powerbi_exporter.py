@@ -90,6 +90,9 @@ class PowerBIExporter:
         # Reorder columns
         df_long = df_long[['Simulation', 'Indicator', 'DateTime', 'Zone', 'Value']]
         
+        # Remove rows with NaN values (non-occupied hours for IOD, AWD, ALPHA)
+        df_long = df_long.dropna(subset=['Value'])
+        
         return df_long
     
     def _calculate_alphatot(self, df_alpha: pd.DataFrame) -> pd.DataFrame:
@@ -266,21 +269,23 @@ class PowerBIExporter:
                 iod_long = self._wide_to_long(iod_wide, 'IOD', include_datetime=True)
                 all_dfs.append(iod_long)
         
-        # AWD (temporal, environmental - single column "Environment")
+        # AWD (environmental - single column "Environment")
+        # AWD is calculated but NOT exported here - it will be added at the end
+        # with all 8,760 hours (not filtered by occupancy)
         if 'AWD' in indicators or 'ALPHA' in indicators:
             self.logger.info("Processing AWD...")
             awd_wide = self.indicators.calculate_ambient_warmness_degree(df.copy())
-            # Apply date filter
-            awd_wide = self._filter_by_date_range(awd_wide, start_date, end_date, year)
-            if 'AWD' in indicators:
-                awd_long = self._wide_to_long(awd_wide, 'AWD', include_datetime=True)
-                all_dfs.append(awd_long)
+            # Apply date filter for ALPHA calculation only
+            awd_wide_filtered = self._filter_by_date_range(awd_wide, start_date, end_date, year)
+            # Store full AWD for later export
+            awd_wide_full = awd_wide  # Keep unfiltered version
         
         # ALPHA (temporal, by zone)
         if 'ALPHA' in indicators:
             self.logger.info("Processing ALPHA...")
-            alpha_wide = self.indicators.calculate_alpha(iod_wide, awd_wide)
-            # Note: alpha_wide is already filtered since iod_wide and awd_wide are filtered
+            # Use filtered AWD for ALPHA calculation
+            alpha_wide = self.indicators.calculate_alpha(iod_wide, awd_wide_filtered)
+            # alpha_wide inherits NaN from IOD (non-occupied hours)
             alpha_long = self._wide_to_long(alpha_wide, 'alpha', include_datetime=True)
             all_dfs.append(alpha_long)
             
@@ -335,6 +340,13 @@ class PowerBIExporter:
             dilevel_long = self._wide_to_long(dilevel_wide, 'DIlevel', include_datetime=True)
             all_dfs.append(dilevel_long)
         
+        # Add AWD as environmental variable at the end (all 8,760 hours)
+        if 'AWD' in indicators:
+            self.logger.info("Adding AWD as environmental variable (all hours)...")
+            awd_long = self._wide_to_long(awd_wide_full, 'AWD', include_datetime=True)
+            # AWD is already in "Environment" column from calculate_ambient_warmness_degree
+            all_dfs.append(awd_long)
+        
         # Concatenate all DataFrames
         self.logger.info("Consolidating all indicators...")
         df_final = pd.concat(all_dfs, ignore_index=True)
@@ -373,8 +385,9 @@ class PowerBIExporter:
                 date_range_str = f"from {start_date}"
             elif end_date:
                 date_range_str = f"to {end_date}"
-            self.logger.info(f"  - Date range: {date_range_str}")
+            self.logger.info(f"  - Date range (filtered): {date_range_str}")
             self.logger.info(f"  - Note: alphatot and DDH calculated for filtered period only")
+            self.logger.info(f"  - AWD exported with ALL hours (8,760) as 'Environment'")
         
         return str(output_path)
 

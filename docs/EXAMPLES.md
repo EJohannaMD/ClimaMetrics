@@ -213,6 +213,11 @@ Donde:
 - **Tcomf** = Temperatura de confort (default: 26.5°C)
 - **(x)⁺** = solo valores positivos
 
+**📤 Exportación a Power BI:**
+- ✅ Solo se exportan horas **ocupadas** (incluye ceros válidos)
+- ❌ Horas **no ocupadas** se excluyen (NaN, no aparecen en el CSV)
+- ✅ El denominador en Power BI es automáticamente correcto
+
 ### 📊 Ejemplo
 
 **Oficina durante un día de verano (horario 9:00-18:00):**
@@ -245,41 +250,56 @@ IOD = (0 + 0 + 0.5 + 2.0 + 2.5 + 3.5 + 4.0 + 3.0 + 1.5 + 0.5) / 10
 
 ### 📚 Concepto
 
-AWD mide cuánto excede la temperatura exterior un umbral base durante TODO el período (24 horas).
+AWD mide cuánto excede la temperatura exterior un umbral base durante **todas las horas del año** (8,760 horas).
 
 ### 🧮 Fórmula
 
 ```
-AWD = Promedio de (Text - Tbase)⁺ durante todas las horas
+AWD = Promedio de (Text - Tbase)⁺ durante todas las horas (8,760)
 ```
 
 Donde:
 - **Text** = Temperatura exterior (°C)
 - **Tbase** = Temperatura base (default: 18°C)
 
+**📤 Exportación a Power BI:**
+- ✅ AWD se exporta con **TODAS las 8,760 horas** del año
+- ✅ Columna "Zone" = **"Environment"** (no es por zona)
+- ✅ ALPHA ya viene **pre-calculado** usando AWD filtrado
+- ✅ Tienes datos climáticos completos para análisis adicional
+
 ### 📊 Ejemplo
 
-**Día completo (24 horas):**
+**Día completo (todas las 24 horas):**
 
-| Hora | Text (°C) | Text - 18 | Contribución |
-|------|-----------|-----------|--------------|
-| 00:00 | 16.0 | -2.0 | 0 |
-| 03:00 | 14.5 | -3.5 | 0 |
-| 06:00 | 15.0 | -3.0 | 0 |
-| 09:00 | 20.0 | +2.0 | **2.0** |
-| 12:00 | 25.0 | +7.0 | **7.0** |
-| 15:00 | 28.0 | +10.0 | **10.0** |
-| 18:00 | 24.0 | +6.0 | **6.0** |
-| 21:00 | 19.0 | +1.0 | **1.0** |
+| Hora | Text (°C) | Text - 18 | AWD Horario | ¿Exportar? |
+|------|-----------|-----------|-------------|------------|
+| 00:00 | 16.0 | -2.0 | **0.0** | ✅ SÍ |
+| 03:00 | 14.5 | -3.5 | **0.0** | ✅ SÍ |
+| 06:00 | 15.0 | -3.0 | **0.0** | ✅ SÍ |
+| 09:00 | 20.0 | +2.0 | **2.0** | ✅ SÍ |
+| 10:00 | 22.0 | +4.0 | **4.0** | ✅ SÍ |
+| 11:00 | 24.0 | +6.0 | **6.0** | ✅ SÍ |
+| 12:00 | 25.0 | +7.0 | **7.0** | ✅ SÍ |
+| 13:00 | 26.0 | +8.0 | **8.0** | ✅ SÍ |
+| 14:00 | 27.0 | +9.0 | **9.0** | ✅ SÍ |
+| 15:00 | 28.0 | +10.0 | **10.0** | ✅ SÍ |
+| 16:00 | 27.0 | +9.0 | **9.0** | ✅ SÍ |
+| 17:00 | 25.0 | +7.0 | **7.0** | ✅ SÍ |
+| 18:00 | 24.0 | +6.0 | **6.0** | ✅ SÍ |
+| 21:00 | 19.0 | +1.0 | **1.0** | ✅ SÍ |
+| 23:00 | 17.0 | -1.0 | **0.0** | ✅ SÍ |
 
-**Suma total de 24 horas: 78.0°C**
+**Suma completa (24 horas): 79.0°C**
 
 **Cálculo:**
 ```
-AWD = 78.0 / 24 = 3.25°C
+AWD = 79.0 / 24 horas = 3.29°C
 ```
 
-**Interpretación:** En promedio, la temperatura exterior estuvo **3.25°C por encima** de la base de 18°C.
+**Interpretación:** En promedio durante todo el día, la temperatura exterior estuvo **3.29°C por encima** de la base de 18°C.
+
+**📤 Para Power BI:** Se exportan **TODAS las 24 horas** × 365 días = **8,760 filas** con `Zone = "Environment"`.
 
 ---
 
@@ -297,12 +317,26 @@ ALPHA = IOD / AWD
 
 ### 📊 Ejemplo con los casos anteriores
 
-```
-IOD = 1.75°C
-AWD = 3.25°C
+**Valores del ejemplo IOD:**
 
-ALPHA = 1.75 / 3.25 = 0.54
 ```
+IOD = 1.75°C  (promedio en horas ocupadas 9:00-18:00)
+```
+
+**Para calcular ALPHA, AWD se filtra a las mismas horas:**
+
+```
+AWD en horas 9:00-18:00 = (2+4+6+7+8+9+10+9+7+6) / 10 = 6.8°C
+
+ALPHA = IOD / AWD = 1.75 / 6.8 = 0.26
+```
+
+**✅ ALPHA ya está pre-calculado** en la exportación con esta lógica.
+
+**📤 En Power BI:**
+- IOD: 10 filas (horas ocupadas)
+- ALPHA: 10 filas (pre-calculado, horas ocupadas)
+- AWD: 8,760 filas (todo el año, como "Environment")
 
 ### 🎯 Interpretación
 
@@ -312,9 +346,10 @@ ALPHA = 1.75 / 3.25 = 0.54
 | **= 1.0** | El edificio replica las condiciones exteriores |
 | **> 1.0** | ❌ El edificio AMPLIFICA el calor exterior |
 
-**En nuestro ejemplo (ALPHA = 0.54):**
-- El edificio está reduciendo el sobrecalentamiento exterior en un **46%**
-- **Buen desempeño térmico** (probablemente con buena inercia, ventilación o sombreado)
+**En nuestro ejemplo (ALPHA = 0.26):**
+- El edificio está reduciendo el sobrecalentamiento exterior en un **74%**
+- **Excelente desempeño térmico** (probablemente con muy buena inercia, ventilación o sombreado)
+- Durante las horas de trabajo, el edificio convierte 6.8°C de calor exterior en solo 1.75°C de disconfort interior
 
 ### 📊 Ejemplos Comparativos
 

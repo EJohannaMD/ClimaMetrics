@@ -364,6 +364,9 @@ class ThermalIndicators:
     def calculate_indoor_overheating_degree(self, data_frame: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate Indoor Overheating Degree (IOD) for each zone in WIDE format.
+        
+        Only includes occupied hours. For non-occupied hours, IOD is NaN (excluded from export).
+        This ensures the denominator only counts hours when the space is actually in use.
 
         Returns:
             DataFrame with DateTime as rows and zones as columns
@@ -372,59 +375,53 @@ class ThermalIndicators:
         
         # Parse datetime
         data_frame['DateTime'] = self._parse_datetime(data_frame['Date/Time'])
-        # TODO FIX THIS SHIT
-        # Calculate excess temperature for occupied periods
-        # data_frame['excess_temp'] = np.where(
-        #    (data_frame['Occupancy'] > 0) & (data_frame['Operative_Temperature'] > self.COMFORT_TEMPERATURE),
-        #    data_frame['Operative_Temperature'] - self.COMFORT_TEMPERATURE,
-        #    0
-        #)
-
-        data_frame['excess_temp'] = np.where(
+        
+        # Calculate excess temperature ONLY for occupied periods
+        # For non-occupied hours: NaN (will be excluded from Power BI export)
+        # For occupied hours with no excess: 0 (valid, will be included)
+        data_frame['IOD'] = np.where(
             data_frame['Occupancy'] > 0,
             np.maximum(data_frame['Operative_Temperature'] - self.COMFORT_TEMPERATURE, 0),
             np.nan
         )
-
-        data_frame = data_frame.dropna(subset=['excess_temp'])
         
         # Pivot to WIDE format: DateTime x Zones
         iod_wide = data_frame.pivot_table(
             index='DateTime',
             columns='Zone',
-            values='excess_temp',
-            aggfunc='sum'
+            values='IOD',
+            aggfunc='mean'  # Mean in case of duplicate timestamps
         )
-
-        iod_data = data_frame.groupby(['DateTime', 'Zone'])['excess_temp'].first().reset_index()
-
-        print(iod_data.head())
         
-        return iod_data
+        return iod_wide
     
     def calculate_ambient_warmness_degree(self, data_frame: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate Ambient Warmness Degree (AWD) - environmental indicator.
+        
+        AWD represents outdoor thermal conditions and is calculated for ALL hours of the year,
+        not filtered by occupancy. This makes it a true environmental variable.
+        
+        For Power BI export, AWD is exported as "Environment" (not per zone) with all 8,760 hours,
+        while ALPHA is pre-calculated using IOD and a filtered version of AWD.
 
         Returns:
-            DataFrame with DateTime and Environment column
+            DataFrame with DateTime as index and single "Environment" column
         """
         self.logger.info("Calculating AWD (Ambient Warmness Degree)...")
         
         # Parse datetime
         data_frame['DateTime'] = self._parse_datetime(data_frame['Date/Time'])
         
-        # Calculate excess ambient temperature
-        data_frame['excess_temp'] = np.where(
-            data_frame['Outdoor_Dry_Bulb_Temperature'] > self.BASE_OUTSIDE_TEMPERATURE,
-            data_frame['Outdoor_Dry_Bulb_Temperature'] - self.BASE_OUTSIDE_TEMPERATURE,
+        # Calculate excess ambient temperature for ALL hours (no occupancy filter)
+        data_frame['AWD'] = np.maximum(
+            data_frame['Outdoor_Dry_Bulb_Temperature'] - self.BASE_OUTSIDE_TEMPERATURE, 
             0
         )
         
-        # AWD is environmental (same for all zones), so take one zone's data
-        awd_data = data_frame.groupby('DateTime')['excess_temp'].first().reset_index()
-        awd_data.columns = ['DateTime', 'Environment']
-        awd_data = awd_data.set_index('DateTime')
+        # Take unique DateTime values (outdoor temp is same for all zones)
+        awd_data = data_frame.groupby('DateTime')['AWD'].first().to_frame()
+        awd_data.columns = ['Environment']
         
         return awd_data
     
@@ -432,19 +429,30 @@ class ThermalIndicators:
         """
         Calculate ALPHA (IOD / AWD) for each zone in WIDE format.
         
+        ALPHA is calculated by dividing IOD (filtered by occupancy) by AWD (environmental).
+        AWD values are aligned with IOD's index (filtered occupied hours).
+        This ensures both have the same denominator (occupied hours only).
+        
         Returns:
             DataFrame with DateTime as rows and zones as columns
         """
         self.logger.info("Calculating ALPHA (IOD/AWD ratio)...")
         
-        # Broadcast AWD to all zones and calculate ratio
+        # Align AWD with IOD's index (reindex to match occupied hours only)
+        # This automatically filters AWD to the same DateTimes as IOD
+        awd_aligned = awd_wide.reindex(iod_wide.index)
+        
+        # Calculate ALPHA for each zone
         alpha_wide = iod_wide.copy()
         
         for zone in alpha_wide.columns:
+            # Divide IOD by AWD (Environment column)
+            # Where IOD is NaN (not occupied), result will be NaN
+            # Where AWD is 0, result will be NaN (avoid division by zero)
             alpha_wide[zone] = np.where(
-                awd_wide['Environment'] != 0,
-                alpha_wide[zone] / awd_wide['Environment'],
-                0
+                (awd_aligned['Environment'] != 0) & (awd_aligned['Environment'].notna()),
+                alpha_wide[zone] / awd_aligned['Environment'],
+                np.nan
             )
         
         return alpha_wide

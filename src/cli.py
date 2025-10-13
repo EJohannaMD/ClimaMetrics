@@ -625,7 +625,7 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
     
     Available indicators:
     - IOD: Indoor Overheating Degree
-    - AWD: Ambient Warmness Degree (environmental, no zones)
+    - AWD: Ambient Warmness Degree (per zone, occupied hours)
     - ALPHA: Overheating Escalator Factor (IOD/AWD)
     - HI: Heat Index (Apparent Temperature)
     - DDH: Degree-weighted Discomfort Hours
@@ -800,7 +800,7 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
     - Single consolidated file with all indicators (CSV or XLSX)
     - Temporal indicators: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
     - Aggregated indicators: DDH (sum across time), alphatot (global average)
-    - Environmental indicator: AWD (Zone = "Environment")
+    - Zone-specific indicator: AWD (per zone, occupied hours only)
     - Optimized for Power BI data modeling and DAX calculations
     
     Export formats:
@@ -809,7 +809,7 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
     
     Available indicators:
     - IOD: Indoor Overheating Degree (temporal)
-    - AWD: Ambient Warmness Degree (temporal, environmental)
+    - AWD: Ambient Warmness Degree (temporal, per zone)
     - ALPHA: Overheating Escalator Factor (temporal, by zone)
     - alphatot: Global ALPHA average (single aggregated value)
     - HI: Heat Index (temporal)

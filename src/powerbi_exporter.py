@@ -13,7 +13,7 @@ Features:
 - ULTRA-LONG format (fully normalized)
 - Temporal indicators: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
 - Aggregated indicators: DDH (sum across time), alphatot (global average)
-- Environmental indicator: AWD (Zone = "Environment")
+- Zone-specific indicator: AWD (per zone, occupied hours only)
 """
 
 import logging
@@ -309,16 +309,15 @@ class PowerBIExporter:
                 iod_long = self._wide_to_long(iod_wide, 'IOD', include_datetime=True)
                 all_dfs.append(iod_long)
         
-        # AWD (environmental - single column "Environment")
-        # AWD is calculated but NOT exported here - it will be added at the end
-        # with all 8,760 hours (not filtered by occupancy)
+        # AWD (per zone, occupied hours only)
+        # AWD is now calculated per zone and filtered by occupancy
         if 'AWD' in indicators or 'ALPHA' in indicators:
             self.logger.info("Processing AWD...")
             awd_wide = self.indicators.calculate_ambient_warmness_degree(df.copy())
-            # Apply date filter for ALPHA calculation only
+            # Apply date filter
             awd_wide_filtered = self._filter_by_date_range(awd_wide, start_date, end_date, year)
-            # Store full AWD for later export
-            awd_wide_full = awd_wide  # Keep unfiltered version
+            # Store filtered AWD for export
+            awd_wide_full = awd_wide_filtered
         
         # ALPHA (temporal, by zone)
         if 'ALPHA' in indicators:
@@ -380,11 +379,10 @@ class PowerBIExporter:
             dilevel_long = self._wide_to_long(dilevel_wide, 'DIlevel', include_datetime=True)
             all_dfs.append(dilevel_long)
         
-        # Add AWD as environmental variable at the end (all 8,760 hours)
+        # Add AWD as zone-specific variable (occupied hours only)
         if 'AWD' in indicators:
-            self.logger.info("Adding AWD as environmental variable (all hours)...")
+            self.logger.info("Adding AWD as zone-specific variable (occupied hours only)...")
             awd_long = self._wide_to_long(awd_wide_full, 'AWD', include_datetime=True)
-            # AWD is already in "Environment" column from calculate_ambient_warmness_degree
             all_dfs.append(awd_long)
         
         # Concatenate all DataFrames
@@ -431,7 +429,7 @@ class PowerBIExporter:
                 date_range_str = f"to {end_date}"
             self.logger.info(f"  - Date range (filtered): {date_range_str}")
             self.logger.info(f"  - Note: alphatot and DDH calculated for filtered period only")
-            self.logger.info(f"  - AWD exported with ALL hours (8,760) as 'Environment'")
+            self.logger.info(f"  - AWD exported per zone with occupied hours only")
         
         return str(output_path)
 

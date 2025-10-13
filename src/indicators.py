@@ -17,21 +17,23 @@ AVAILABLE INDICATORS:
    Unit: °C (degrees Celsius)
    
 2. AWD (Ambient Warmness Degree)
-   Formula: AWD = Σ(Tai - Tb)⁺ / N_total
+   Formula: AWD = Σ(Tai - Tb)⁺ / Σ(Occupied_hours)
    Where:
    - Tai = Ambient (outdoor) air temperature (°C)
    - Tb = Base outside temperature (default: 18°C)
    - (x)⁺ = max(x, 0) - only positive values
-   - N_total = Total time steps (all hours)
+   - Σ(Occupied_hours) = Total occupied hours per zone
    Unit: °C (degrees Celsius)
+   Note: Calculated per zone and filtered by occupancy to match IOD methodology
    
 3. ALPHA (Overheating Escalator Factor)
    Formula: ALPHA = IOD / AWD
    Where:
-   - IOD = Indoor Overheating Degree
-   - AWD = Ambient Warmness Degree
+   - IOD = Indoor Overheating Degree (per zone, occupied hours)
+   - AWD = Ambient Warmness Degree (per zone, occupied hours)
    Unit: dimensionless ratio
    Interpretation: ALPHA < 1 means building performs better than ambient conditions
+   Note: Both IOD and AWD calculated per zone with consistent denominators
    
 4. HI (Heat Index - Apparent Temperature)
    Formula (for T > 26.7°C and RH ≥ 40%):
@@ -397,63 +399,77 @@ class ThermalIndicators:
     
     def calculate_ambient_warmness_degree(self, data_frame: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate Ambient Warmness Degree (AWD) - environmental indicator.
+        Calculate Ambient Warmness Degree (AWD) for each zone during occupied hours only.
         
-        AWD represents outdoor thermal conditions and is calculated for ALL hours of the year,
-        not filtered by occupancy. This makes it a true environmental variable.
+        AWD represents outdoor thermal conditions but is now calculated per zone and 
+        filtered by occupancy to match IOD's calculation methodology. This ensures
+        fair comparison when calculating ALPHA = IOD / AWD.
         
-        For Power BI export, AWD is exported as "Environment" (not per zone) with all 8,760 hours,
-        while ALPHA is pre-calculated using IOD and a filtered version of AWD.
+        For Power BI export, AWD is exported per zone (not as "Environment") with
+        only occupied hours, ensuring consistent denominators with IOD.
 
         Returns:
-            DataFrame with DateTime as index and single "Environment" column
+            DataFrame with DateTime as rows and zones as columns (WIDE format)
         """
-        self.logger.info("Calculating AWD (Ambient Warmness Degree)...")
+        self.logger.info("Calculating AWD (Ambient Warmness Degree) per zone during occupied hours...")
         
         # Parse datetime
         data_frame['DateTime'] = self._parse_datetime(data_frame['Date/Time'])
         
-        # Calculate excess ambient temperature for ALL hours (no occupancy filter)
-        data_frame['AWD'] = np.maximum(
-            data_frame['Outdoor_Dry_Bulb_Temperature'] - self.BASE_OUTSIDE_TEMPERATURE, 
-            0
+        # Calculate excess ambient temperature ONLY for occupied periods
+        # For non-occupied hours: NaN (will be excluded from Power BI export)
+        # For occupied hours with no excess: 0 (valid, will be included)
+        data_frame['AWD'] = np.where(
+            data_frame['Occupancy'] > 0,
+            np.maximum(data_frame['Outdoor_Dry_Bulb_Temperature'] - self.BASE_OUTSIDE_TEMPERATURE, 0),
+            np.nan
         )
         
-        # Take unique DateTime values (outdoor temp is same for all zones)
-        awd_data = data_frame.groupby('DateTime')['AWD'].first().to_frame()
-        awd_data.columns = ['Environment']
+        # Pivot to WIDE format: DateTime x Zones
+        awd_wide = data_frame.pivot_table(
+            index='DateTime',
+            columns='Zone',
+            values='AWD',
+            aggfunc='mean'  # Mean in case of duplicate timestamps
+        )
         
-        return awd_data
+        return awd_wide
     
     def calculate_alpha(self, iod_wide: pd.DataFrame, awd_wide: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate ALPHA (IOD / AWD) for each zone in WIDE format.
         
-        ALPHA is calculated by dividing IOD (filtered by occupancy) by AWD (environmental).
-        AWD values are aligned with IOD's index (filtered occupied hours).
-        This ensures both have the same denominator (occupied hours only).
+        ALPHA is calculated by dividing IOD by AWD for each zone individually.
+        Both IOD and AWD are now calculated per zone and filtered by occupancy,
+        ensuring fair comparison with consistent denominators.
         
         Returns:
             DataFrame with DateTime as rows and zones as columns
         """
-        self.logger.info("Calculating ALPHA (IOD/AWD ratio)...")
+        self.logger.info("Calculating ALPHA (IOD/AWD ratio) per zone...")
         
-        # Align AWD with IOD's index (reindex to match occupied hours only)
-        # This automatically filters AWD to the same DateTimes as IOD
-        awd_aligned = awd_wide.reindex(iod_wide.index)
+        # Ensure both DataFrames have the same index and columns
+        # Align indices to match (both should have same occupied hours)
+        common_index = iod_wide.index.intersection(awd_wide.index)
+        iod_aligned = iod_wide.loc[common_index]
+        awd_aligned = awd_wide.loc[common_index]
         
         # Calculate ALPHA for each zone
-        alpha_wide = iod_wide.copy()
+        alpha_wide = iod_aligned.copy()
         
         for zone in alpha_wide.columns:
-            # Divide IOD by AWD (Environment column)
-            # Where IOD is NaN (not occupied), result will be NaN
-            # Where AWD is 0, result will be NaN (avoid division by zero)
-            alpha_wide[zone] = np.where(
-                (awd_aligned['Environment'] != 0) & (awd_aligned['Environment'].notna()),
-                alpha_wide[zone] / awd_aligned['Environment'],
-            np.nan
-        )
+            if zone in awd_aligned.columns:
+                # Divide IOD by AWD for each zone
+                # Where IOD is NaN (not occupied), result will be NaN
+                # Where AWD is 0, result will be NaN (avoid division by zero)
+                alpha_wide[zone] = np.where(
+                    (awd_aligned[zone] != 0) & (awd_aligned[zone].notna()),
+                    iod_aligned[zone] / awd_aligned[zone],
+                    np.nan
+                )
+            else:
+                self.logger.warning(f"Zone {zone} not found in AWD data")
+                alpha_wide[zone] = np.nan
 
         return alpha_wide
 

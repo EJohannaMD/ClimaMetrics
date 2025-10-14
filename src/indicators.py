@@ -48,16 +48,18 @@ AVAILABLE INDICATORS:
                Danger (41-54°C), Extreme Danger (>54°C)
    
 5. DDH (Degree-weighted Discomfort Hours)
-   Formula: DDH = Σ[(Top - Top_up)⁺ × Occupied_flag]
+   Formula: DDH = (Top - Top_up)⁺ × Occupied_flag for each hour
    Where:
    - Top = Operative temperature (°C)
    - Top_up = Upper adaptive comfort limit (°C)
    - Top_up = T_op + 4°C (Category II tolerance)
    - T_op = 0.33 × θ_rm + 18.8 (Neutral operative temperature)
    - θ_rm = Running mean outdoor temperature (weighted 7-day average)
-   - Occupied_flag = 1 if occupied, 0 otherwise
+   - Occupied_flag = 1 if occupied, 0 if not occupied
    - (x)⁺ = max(x, 0) - only positive exceedance
-   Unit: °C·hours (degree-hours)
+   - Calculated for ALL hours (8,760) with 0 for non-occupied hours
+   Unit: °C·hours (degree-hours per hour)
+   Note: Hourly values per zone for complete temporal analysis
    Based on: EN 15251 adaptive comfort model
    
 6. DI (Discomfort Index)
@@ -476,7 +478,7 @@ class ThermalIndicators:
     def calculate_heat_index_category(self, hi_celsius: float) -> str:
         """Categorize Heat Index risk levels"""
         if pd.isna(hi_celsius):
-            return "INVALID DATA"
+            return np.nan
         elif hi_celsius < 27:
             return "SAFE CONDITION"
         elif hi_celsius < 32:
@@ -519,19 +521,26 @@ class ThermalIndicators:
         # Ensure RH is in valid range (0-100%)
         data_frame['RH'] = data_frame['Relative_Humidity'].clip(0, 100)
         
-        # Calculate Heat Index
+        # Calculate Heat Index ONLY for occupied periods
+        # For non-occupied hours: NaN (will be excluded from Power BI export)
+        # For occupied hours with simple conditions: use temperature directly
+        # For occupied hours with complex conditions: use full formula
         data_frame['HI'] = np.where(
-            (data_frame['Operative_Temperature'] <= 26.7) | (data_frame['RH'] < 40),
-            data_frame['Operative_Temperature'],
-            (self.HI_C1 +
-             self.HI_C2 * data_frame['Operative_Temperature'] +
-             self.HI_C3 * data_frame['RH'] +
-             self.HI_C4 * data_frame['Operative_Temperature'] * data_frame['RH'] +
-             self.HI_C5 * (data_frame['Operative_Temperature']**2) +
-             self.HI_C6 * (data_frame['RH']**2) +
-             self.HI_C7 * (data_frame['Operative_Temperature']**2) * data_frame['RH'] +
-             self.HI_C8 * data_frame['Operative_Temperature'] * (data_frame['RH']**2) +
-             self.HI_C9 * (data_frame['Operative_Temperature']**2) * (data_frame['RH']**2))
+            data_frame['Occupancy'] > 0,
+            np.where(
+                (data_frame['Operative_Temperature'] <= 26.7) | (data_frame['RH'] < 40),
+                data_frame['Operative_Temperature'],
+                (self.HI_C1 +
+                 self.HI_C2 * data_frame['Operative_Temperature'] +
+                 self.HI_C3 * data_frame['RH'] +
+                 self.HI_C4 * data_frame['Operative_Temperature'] * data_frame['RH'] +
+                 self.HI_C5 * (data_frame['Operative_Temperature']**2) +
+                 self.HI_C6 * (data_frame['RH']**2) +
+                 self.HI_C7 * (data_frame['Operative_Temperature']**2) * data_frame['RH'] +
+                 self.HI_C8 * data_frame['Operative_Temperature'] * (data_frame['RH']**2) +
+                 self.HI_C9 * (data_frame['Operative_Temperature']**2) * (data_frame['RH']**2))
+            ),
+            np.nan  # NaN for non-occupied hours
         )
         
         # Pivot to WIDE format
@@ -559,19 +568,26 @@ class ThermalIndicators:
         # Ensure RH is in valid range (0-100%)
         data_frame['RH'] = data_frame['Relative_Humidity'].clip(0, 100)
         
-        # Calculate Heat Index
+        # Calculate Heat Index ONLY for occupied periods
+        # For non-occupied hours: NaN (will be excluded from Power BI export)
+        # For occupied hours with simple conditions: use temperature directly
+        # For occupied hours with complex conditions: use full formula
         data_frame['HI'] = np.where(
-            (data_frame['Operative_Temperature'] <= 26.7) | (data_frame['RH'] < 40),
-            data_frame['Operative_Temperature'],
-            (self.HI_C1 +
-             self.HI_C2 * data_frame['Operative_Temperature'] +
-             self.HI_C3 * data_frame['RH'] +
-             self.HI_C4 * data_frame['Operative_Temperature'] * data_frame['RH'] +
-             self.HI_C5 * (data_frame['Operative_Temperature']**2) +
-             self.HI_C6 * (data_frame['RH']**2) +
-             self.HI_C7 * (data_frame['Operative_Temperature']**2) * data_frame['RH'] +
-             self.HI_C8 * data_frame['Operative_Temperature'] * (data_frame['RH']**2) +
-             self.HI_C9 * (data_frame['Operative_Temperature']**2) * (data_frame['RH']**2))
+            data_frame['Occupancy'] > 0,
+            np.where(
+                (data_frame['Operative_Temperature'] <= 26.7) | (data_frame['RH'] < 40),
+                data_frame['Operative_Temperature'],
+                (self.HI_C1 +
+                 self.HI_C2 * data_frame['Operative_Temperature'] +
+                 self.HI_C3 * data_frame['RH'] +
+                 self.HI_C4 * data_frame['Operative_Temperature'] * data_frame['RH'] +
+                 self.HI_C5 * (data_frame['Operative_Temperature']**2) +
+                 self.HI_C6 * (data_frame['RH']**2) +
+                 self.HI_C7 * (data_frame['Operative_Temperature']**2) * data_frame['RH'] +
+                 self.HI_C8 * data_frame['Operative_Temperature'] * (data_frame['RH']**2) +
+                 self.HI_C9 * (data_frame['Operative_Temperature']**2) * (data_frame['RH']**2))
+            ),
+            np.nan  # NaN for non-occupied hours
         )
         
         # Apply categories
@@ -583,7 +599,7 @@ class ThermalIndicators:
             columns='Zone',
             values='HIlevel',
             aggfunc='first'
-        ).fillna("SAFE CONDITION")
+        )
         
         return hilevel_wide
     
@@ -612,9 +628,7 @@ class ThermalIndicators:
 
     def calculate_discomfort_index_category(self, di_value: float) -> str:
         """Categorize DI risk levels"""
-        if pd.isna(di_value):
-            return "INVALID DATA"
-        elif di_value < 21:
+        if di_value < 21:
             return "COMFORTABLE"
         elif di_value < 24:
             return "SLIGHTLY UNCOMFORTABLE"
@@ -690,18 +704,23 @@ class ThermalIndicators:
             columns='Zone',
             values='DIlevel',
             aggfunc='first'
-        ).fillna("COMFORTABLE")
+        )
         
         return dilevel_wide
     
     def calculate_degree_weighted_discomfort_hours(self, data_frame: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate Degree-weighted Discomfort Hours (DDH) using adaptive comfort model.
+        
+        DDH is calculated as hourly values per zone for ALL hours of the year.
+        For occupied hours: DDH = (Top - Top_up)⁺ × 1 = degree-hours of discomfort
+        For non-occupied hours: DDH = (Top - Top_up)⁺ × 0 = 0
+        This provides complete temporal resolution for analysis of discomfort patterns.
 
         Returns:
-            DataFrame with DateTime as rows and zones as columns
+            DataFrame with DateTime as rows and zones as columns (hourly values)
         """
-        self.logger.info("Calculating DDH (Degree-weighted Discomfort Hours)...")
+        self.logger.info("Calculating DDH (Degree-weighted Discomfort Hours) hourly per zone...")
         
         # Parse datetime
         data_frame['DateTime'] = self._parse_datetime(data_frame['Date/Time'])
@@ -734,7 +753,9 @@ class ThermalIndicators:
         # Calculate exceedance
         data_frame['top_minus_top_up'] = (data_frame['Operative_Temperature'] - data_frame['Top_up']).clip(lower=0)
         
-        # DDH for overheating during occupied hours
+        # DDH for overheating - calculated for ALL hours
+        # For occupied hours: DDH = (Top - Top_up)⁺ × 1 = degree-hours of discomfort
+        # For non-occupied hours: DDH = (Top - Top_up)⁺ × 0 = 0
         data_frame['DDH'] = data_frame['top_minus_top_up'] * (data_frame['Occupancy'] > 0).astype(int)
         
         # Pivot to WIDE format
@@ -742,8 +763,8 @@ class ThermalIndicators:
             index='DateTime',
             columns='Zone',
             values='DDH',
-            aggfunc='sum'
-        ).fillna(0)
+            aggfunc='sum'  # Sum in case of duplicate timestamps
+        )
         
         return ddh_wide
     

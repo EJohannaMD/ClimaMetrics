@@ -628,7 +628,7 @@ def indicators(energyplus_csv, zones, zone_group, output_dir, simulation, indica
     - AWD: Ambient Warmness Degree (per zone, occupied hours)
     - ALPHA: Overheating Escalator Factor (IOD/AWD)
     - HI: Heat Index (Apparent Temperature)
-    - DDH: Degree-weighted Discomfort Hours
+    - DDH: Degree-weighted Discomfort Hours (temporal, per zone)
     - DI: Discomfort Index
     - DIlevel: Discomfort Index Risk Categories
     - HIlevel: Heat Index Risk Categories
@@ -814,7 +814,7 @@ def powerbi(energyplus_csv, zones, zone_group, output, simulation, indicators, c
     - alphatot: Global ALPHA average (single aggregated value)
     - HI: Heat Index (temporal)
     - HIlevel: Heat Index Risk Categories (temporal)
-    - DDH: Degree-weighted Discomfort Hours (aggregated sum)
+    - DDH: Degree-weighted Discomfort Hours (temporal, per zone)
     - DI: Discomfort Index (temporal)
     - DIlevel: Discomfort Index Risk Categories (temporal)
     

@@ -11,8 +11,8 @@ Simulation | Indicator | DateTime | Zone | Value
 Features:
 - Single consolidated CSV with all indicators
 - ULTRA-LONG format (fully normalized)
-- Temporal indicators: IOD, ALPHA, HI, DI, HIlevel, DIlevel (hourly values)
-- Aggregated indicators: DDH (sum across time), alphatot (global average)
+- Temporal indicators: IOD, AWD, ALPHA, HI, DDH, DI, HIlevel, DIlevel (hourly values)
+- Aggregated indicators: alphatot (global average)
 - Zone-specific indicator: AWD (per zone, occupied hours only)
 """
 
@@ -156,30 +156,6 @@ class PowerBIExporter:
             self.logger.debug(f"Exported to CSV: {output_path}")
         
         return output_path
-    
-    def _aggregate_ddh(self, df_ddh: pd.DataFrame) -> pd.DataFrame:
-        """
-        Aggregate DDH by summing across all time periods.
-        
-        Args:
-            df_ddh: WIDE format DataFrame with DDH hourly values
-            
-        Returns:
-            DataFrame with one row per zone (aggregated DDH)
-        """
-        # Sum across all time periods (rows)
-        ddh_totals = df_ddh.sum(axis=0)
-        
-        # Create DataFrame
-        df_ddh_agg = pd.DataFrame({
-            'Simulation': self.simulation_name,
-            'Indicator': 'DDH',
-            'DateTime': '',
-            'Zone': ddh_totals.index,
-            'Value': ddh_totals.values
-        })
-        
-        return df_ddh_agg
     
     def _filter_by_date_range(
         self,
@@ -351,15 +327,15 @@ class PowerBIExporter:
             hilevel_long = self._wide_to_long(hilevel_wide, 'HIlevel', include_datetime=True)
             all_dfs.append(hilevel_long)
         
-        # DDH (aggregated, by zone)
+        # DDH (temporal, by zone)
         if 'DDH' in indicators:
             self.logger.info("Processing DDH...")
             ddh_wide = self.indicators.calculate_degree_weighted_discomfort_hours(df.copy())
-            # Apply date filter BEFORE aggregating
+            # Apply date filter
             ddh_wide = self._filter_by_date_range(ddh_wide, start_date, end_date, year)
-            # Aggregate filtered data
-            ddh_agg = self._aggregate_ddh(ddh_wide)
-            all_dfs.append(ddh_agg)
+            # Convert to LONG format (temporal)
+            ddh_long = self._wide_to_long(ddh_wide, 'DDH', include_datetime=True)
+            all_dfs.append(ddh_long)
         
         # DI (temporal, by zone)
         if 'DI' in indicators:
@@ -428,7 +404,7 @@ class PowerBIExporter:
             elif end_date:
                 date_range_str = f"to {end_date}"
             self.logger.info(f"  - Date range (filtered): {date_range_str}")
-            self.logger.info(f"  - Note: alphatot and DDH calculated for filtered period only")
+            self.logger.info(f"  - Note: alphatot calculated for filtered period only")
             self.logger.info(f"  - AWD exported per zone with occupied hours only")
         
         return str(output_path)
